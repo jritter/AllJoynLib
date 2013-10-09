@@ -38,14 +38,11 @@ import android.os.Message;
 import android.support.v4.content.LocalBroadcastManager;
 
 public class BusHandler extends Handler {
-    private static final String SERVICE_NAME = "org.alljoyn.PeerGroupManagerApp";
-    
-  
+	//org.alljoyn.PeerGroupManagerApp
+    private static final String SERVICE_NAME = "ch.bfh.evoting";
     
     private SimpleService   mSimpleService = new SimpleService();
     private PeerGroupManager  mGroupManager;
-
-
 
 	private Context context;
 
@@ -65,49 +62,50 @@ public class BusHandler extends Handler {
     public BusHandler(Looper looper, Context ctx) {
         super(looper);
         /* Connect to an AllJoyn object. */
-        this.sendEmptyMessage(BusHandler.INIT);
+        this.doInit();
         this.context = ctx;
     }
     
     @Override
     public void handleMessage(Message msg) {
+    	Status status =  null;
         switch(msg.what) {
-        case INIT: {
-            doInit();
-            break;
-        }
-        case CREATE_GROUP: {
-            doCreateGroup((String) msg.obj);
-            break;
-        }
-        case DESTROY_GROUP : {
-            doDestroyGroup((String) msg.obj);
-            break;
-        }
-        case JOIN_GROUP: {
-            doJoinGroup((String) msg.obj);
-            break;
-        }
-        case LEAVE_GROUP : {
-            doLeaveGroup((String) msg.obj);
-            break;
-        }
-        case UNLOCK_GROUP : {
-        	doUnlockGroup((String) msg.obj);
-        	break;
-        }
-        case LOCK_GROUP : {
-        	doLockGroup((String) msg.obj);
-        	break;
-        }
-        case SET_PORT : {
-        	doSetPort((Short) msg.obj);
-        	break;
-        }
-        case JOIN_OR_CREATE : {
-        	doJoinOrCreate((String) msg.obj);
-        	break;
-        }
+//        case INIT: {
+//            doInit();
+//            break;
+//        }
+//        case CREATE_GROUP: {
+//        	status = doCreateGroup((String) msg.obj);
+//            break;
+//        }
+//        case DESTROY_GROUP : {
+//        	status = doDestroyGroup((String) msg.obj);
+//            break;
+//        }
+//        case JOIN_GROUP: {
+//        	status = doJoinGroup((String) msg.obj);
+//            break;
+//        }
+//        case LEAVE_GROUP : {
+//        	status = doLeaveGroup((String) msg.obj);
+//            break;
+//        }
+//        case UNLOCK_GROUP : {
+//        	status = doUnlockGroup((String) msg.obj);
+//        	break;
+//        }
+//        case LOCK_GROUP : {
+//        	status = doLockGroup((String) msg.obj);
+//        	break;
+//        }
+//        case SET_PORT : {
+//        	doSetPort((Short) msg.obj);
+//        	break;
+//        }
+//        case JOIN_OR_CREATE : {
+//        	status = doJoinOrCreate((String) msg.obj);
+//        	break;
+//        }
         case PING: {
             Bundle data = msg.getData();
             String groupName = data.getString("groupName");
@@ -115,39 +113,30 @@ public class BusHandler extends Handler {
             doPing(groupName, pingString);
             break;
         }
-        case DISCONNECT: {
-            doDisconnect();
-            break;
-        }
+//        case DISCONNECT: {
+//            doDisconnect();
+//            break;
+//        }
         default:
             break;
         }
     }
 
-    
-
-	private void doInit() {
+	public void doInit() {
 		PeerGroupListener pgListener = new PeerGroupListener() {
         	@Override
-            public void foundAdvertisedName(String groupName, short transport) {
-                updatePingGroupList();
-            }
+            public void foundAdvertisedName(String groupName, short transport) {}
             
 
             @Override
-            public void lostAdvertisedName(String groupName, short transport) {
-                updatePingGroupList();
-            }
+            public void lostAdvertisedName(String groupName, short transport) {}
             
             @Override
-            public void groupLost(String groupName) {
-                updatePingGroupList();
-            }
+            public void groupLost(String groupName) {}
             
             @Override
             public void peerAdded(String busId, String groupName, int numParticipants){
-            	System.out.println(busId);
-            	updatePingGroupList();
+            	LocalBroadcastManager.getInstance(context).sendBroadcast(new Intent("participantStateUpdate"));
             }
         };
         
@@ -155,75 +144,46 @@ public class BusHandler extends Handler {
         busObjects.add(new BusObjectData(mSimpleService, "/SimpleService"));
         mGroupManager = new PeerGroupManager(SERVICE_NAME, pgListener, busObjects);
         mGroupManager.registerSignalHandlers(this);
-        updatePingGroupList();
     }
     
-    private void doDisconnect() {
+	public void doDisconnect() {
         mGroupManager.cleanup();
         getLooper().quit();
     }
 
-    private void doCreateGroup(String groupName) {
-        Status status = mGroupManager.createGroup(groupName);
-        if (status == Status.OK) {
-            updatePingGroupList();
-        }
+	public Status doCreateGroup(String groupName) {
+        return mGroupManager.createGroup(groupName);
     }
 
-    private void doDestroyGroup(String groupName) {
-        
-        Status status = mGroupManager.destroyGroup(groupName);
-        
-        if(status == Status.OK){
-        	updatePingGroupList();
-    	}
+	public Status doDestroyGroup(String groupName) {
+        return mGroupManager.destroyGroup(groupName);
     }
 
-    private void doJoinGroup(String groupName) {
-        
-        Status status = mGroupManager.joinGroup(groupName);
-        
-        if (status == Status.OK) {    
-            updatePingGroupList();
-        }
+	public Status doJoinGroup(String groupName) {
+        return mGroupManager.joinGroup(groupName);
     }
 
-    private void doLeaveGroup(String groupName) {
-        Status status = mGroupManager.leaveGroup(groupName);
-        if (status == Status.OK) {  
-            updatePingGroupList();
-        }
+	public Status doLeaveGroup(String groupName) {
+        return mGroupManager.leaveGroup(groupName);
     }
     
-    private void doUnlockGroup(String groupName) {
-    	Status status = mGroupManager.unlockGroup(groupName);
-    	if (status == Status.OK) {  
-    		updatePingGroupList();
-        }
-		
+	public Status doUnlockGroup(String groupName) {
+    	 return mGroupManager.unlockGroup(groupName);
 	}
     
-    private void doLockGroup(String groupName) {
-    	Status status = mGroupManager.lockGroup(groupName);
-    	if (status == Status.OK) {  
-    		updatePingGroupList();
-        }
+	public Status doLockGroup(String groupName) {
+    	return mGroupManager.lockGroup(groupName);
 	}
     
-    private void doSetPort(short sessionPort){
+	public void doSetPort(short sessionPort){
     	mGroupManager.setSessionPort(sessionPort);
-    	updatePingGroupList();
     }
     
-    private void doJoinOrCreate(String groupName){
-        JoinOrCreateReturn status = mGroupManager.joinOrCreateGroup(groupName);
-        if (status.getStatus() == Status.OK) {
-            updatePingGroupList();
-            
-        }
+	public Status doJoinOrCreate(String groupName){
+        return mGroupManager.joinOrCreateGroup(groupName).getStatus();
     }
 
-    private void doPing(String groupName, String message) {
+	public void doPing(String groupName, String message) {
     	// TODO once getSignalInterface is done
         SimpleInterface simpleInterface = mGroupManager.getSignalInterface(groupName, mSimpleService, SimpleInterface.class);
 
@@ -236,63 +196,19 @@ public class BusHandler extends Handler {
         }
     }
     
-    
-    
-    private void updatePingGroupList() {
-    	
-        List<String> availableGroups = mGroupManager.listFoundGroups();
-        List<String> hostedGroups = mGroupManager.listHostedGroups();
-        List<String> joinedGroups = mGroupManager.listJoinedGroups();
-        List<String> lockedGroups = mGroupManager.listLockedGroups();
-        
-        availableGroups.removeAll(hostedGroups);
-        availableGroups.removeAll(joinedGroups);
-        
-        String[] availableGroupArray = availableGroups.toArray(new String[0]);
-        String[] hostedGroupArray = hostedGroups.toArray(new String[0]);
-        String[] joinedGroupArray = joinedGroups.toArray(new String[0]);
-        String[] lockGroupArray = lockedGroups.toArray(new String[0]);
-
-        Bundle data = new Bundle();
-        
-        data.putStringArray("availableGroupList", availableGroupArray);
-        data.putStringArray("hostedGroupList", hostedGroupArray);
-        data.putStringArray("joinedGroupList", joinedGroupArray);
-        data.putStringArray("lockedGroupList", lockGroupArray);
-        
+    public String getIdentification(){
+    	return mGroupManager.getMyPeerId();
     }
-    
-    /*
-     * Method calls called by the dialogs
-     */
-    public ArrayList<String> listGroups() {
-        return mGroupManager.listFoundGroups();
-    }
-    
-    public ArrayList<String> listHostedGroups() {
-        return mGroupManager.listHostedGroups();
-    }
-    
-    public ArrayList<String> listJoinedGroups() {
-        return mGroupManager.listJoinedGroups();
-    }
-    
-    public ArrayList<String> listLockedGroups() {
-		return mGroupManager.listLockedGroups();
-	}
     
     public ArrayList<String> getParticipants(String groupName) {
         return mGroupManager.getPeers(groupName);
     }
-    
-    
 
     /*
      * Simple class with the empty Ping signal
      */
     class SimpleService implements SimpleInterface, BusObject {
-        public void Ping(String Str) {
-        }        
+        public void Ping(String Str) {}        
     }
     
     /*
@@ -305,8 +221,6 @@ public class BusHandler extends Handler {
     	LocalBroadcastManager.getInstance(context).sendBroadcast(i);
     }
 
-    public String getIdentification(){
-    	return mGroupManager.getMyPeerId();
-    }
+    
 	
 }
