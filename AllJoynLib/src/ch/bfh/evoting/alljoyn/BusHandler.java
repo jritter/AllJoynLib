@@ -25,9 +25,14 @@ import java.nio.MappedByteBuffer;
 import java.security.AlgorithmParameters;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.PrivateKey;
 import java.security.SecureRandom;
+import java.security.Signature;
+import java.security.SignatureException;
 import java.security.spec.InvalidKeySpecException;
 import java.security.spec.InvalidParameterSpecException;
 import java.security.spec.KeySpec;
@@ -85,8 +90,10 @@ public class BusHandler extends Handler {
 	/*
 	 * Security
 	 */
-	private static String Salt_Base64 = null;
+	private static String salt_Base64 = null;
 	private SecretKey secretKey;
+	private KeyPair keyPair;
+	private PrivateKey privateKey;
 
 	/*
 	 * AllJoyn
@@ -97,7 +104,6 @@ public class BusHandler extends Handler {
 	/*
 	 * Message queues
 	 */
-	private Queue<String> messageQueue = new LinkedList<String>();
 	private Queue<String> messageQueueToSend = new LinkedList<String>();
 
 	//	private Queue<String> messagesReceivedToEarlyQueue = new LinkedList<String>();
@@ -115,6 +121,7 @@ public class BusHandler extends Handler {
 	private String lastJoinedNetwork;
 	private boolean amIAdmin = false;
 	private boolean connected = false;
+	private String saltMessage;
 
 	/* 
 	 * These are the messages sent to the BusHandler from the UI.
@@ -137,6 +144,15 @@ public class BusHandler extends Handler {
 		this.doInit();
 		this.context = ctx;
 		userDetails = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+
+		//		PrivateKey privateKey = (PrivateKey)userDetails.getString("privatekey", null);
+		//		try {
+		//			keyPair = KeyPairGenerator.getInstance("RSA").generateKeyPair();
+		//			privateKey = keyPair.getPrivate();
+		//		} catch (NoSuchAlgorithmException e) {
+		//			// TODO Auto-generated catch block
+		//			e.printStackTrace();
+		//		}
 	}
 
 
@@ -238,7 +254,6 @@ public class BusHandler extends Handler {
 			@Override
 			public void foundAdvertisedName(String groupName, short transport) {}
 
-
 			@Override
 			public void lostAdvertisedName(String groupName, short transport) {
 				Log.d(TAG, "Group "+groupName+" was destroyed.");
@@ -259,37 +274,22 @@ public class BusHandler extends Handler {
 
 				final String group = groupName;
 
-				//Work around waiting that the peer added is really connected before sending him a message
-				new AsyncTask<Object, Object, Object>(){
+				// admin sends the salt to all, but especially for the added peer
+				if(amIAdmin){
+					Log.e(TAG, "Sending salt");
+					Message msg = obtainMessage(BusHandler.PING);
+					Bundle data = new Bundle();
+					data.putString("groupName", group);
+					data.putString("pingString", "salt||"+salt_Base64);
+					data.putBoolean("encrypted", false);
+					msg.setData(data);
+					sendMessage(msg);
+				}
 
-					@Override
-					protected Object doInBackground(Object... arg0) {
-						SystemClock.sleep(1000);
-						// admin sends the salt to all, but especially for the added peer
-						if(amIAdmin){
-							Log.e(TAG, "Sending salt");
-							Message msg = obtainMessage(BusHandler.PING);
-							Bundle data = new Bundle();
-							data.putString("groupName", group);
-							data.putString("pingString", "salt||"+Salt_Base64);
-							data.putBoolean("encrypted", false);
-							msg.setData(data);
-							sendMessage(msg);
-						}
-
-						// send my identity if possible
-						if(Salt_Base64!=null){
-							sendMyIdentity();
-						}
-
-						//update UI
-						LocalBroadcastManager.getInstance(context).sendBroadcast(new Intent("participantStateUpdate"));
-						return null;
-					}
-
-				}.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR);
-
-
+				
+				//update UI
+				LocalBroadcastManager.getInstance(context).sendBroadcast(new Intent("participantStateUpdate"));
+				
 			}
 		};
 
@@ -301,6 +301,7 @@ public class BusHandler extends Handler {
 
 	private void doDisconnect() {
 		mGroupManager.cleanup();
+		connected = false;
 		getLooper().quit();
 	}
 
@@ -314,8 +315,8 @@ public class BusHandler extends Handler {
 		}
 
 		//Create a salt and derive the key
-		Salt_Base64 = Base64.encodeToString(SecureRandom.getSeed(8), Base64.DEFAULT);
-		secretKey = this.derivateKey(userDetails.getString("password", Salt_Base64).toCharArray(), Base64.decode(Salt_Base64, Base64.DEFAULT));
+		salt_Base64 = Base64.encodeToString(SecureRandom.getSeed(8), Base64.DEFAULT);
+		secretKey = this.derivateKey(userDetails.getString("password", salt_Base64).toCharArray(), Base64.decode(salt_Base64, Base64.DEFAULT));
 
 		//create the group
 		Status status = mGroupManager.createGroup(groupName);
@@ -325,24 +326,34 @@ public class BusHandler extends Handler {
 			nameMap.put(this.getIdentification(), new Identity(myName, "key"));
 			//some flags
 			lastJoinedNetwork = groupName;
-			amIAdmin =true;
+			amIAdmin = true;
+			connected = true;
+
 		}
 		return status;
 	}
 
 	private Status doDestroyGroup(String groupName) {
+		amIAdmin = false;
 		return mGroupManager.destroyGroup(groupName);
 	}
 
 	private Status doJoinGroup(String groupName) {
 
 		Status status = mGroupManager.joinGroup(groupName);
+		Log.e(TAG, "Satus of join is"+status);
 		if(status == Status.OK){
 			//save my identity
 			String myName = userDetails.getString("identification", "");
 			nameMap.put(this.getIdentification(), new Identity(myName, "key"));
 
 			lastJoinedNetwork = groupName;
+			connected = true;
+
+			if(saltMessage!=null){
+				this.saltReceived(saltMessage);
+			}
+			
 		}
 		return status;
 	}
@@ -418,32 +429,59 @@ public class BusHandler extends Handler {
 	 * @param encrypted indicate if message must be encrypted or not 
 	 */
 	private void doPing(String groupName, String message, boolean encrypted) {
-		// TODO sign message
-		
+
 		if(this.secretKey==null && encrypted){
 			this.messageQueueToSend.add(message);
 			return;
 		}
 
-		String finalMessage;
+		byte[] valueToSign;
+		String messageToSend;
 		if(encrypted){
-			byte[] encryptedMessage = this.encrypt(secretKey, message.getBytes());
-			if(encryptedMessage==null){
+			valueToSign = this.encrypt(secretKey, message.getBytes());
+			messageToSend = Base64.encodeToString(valueToSign, Base64.DEFAULT);
+			if(valueToSign==null){
 				//encryption failed
 				Log.e(TAG, "Message encryption failed");
 				return;
 			}
-			finalMessage = new String(Base64.encode(encryptedMessage,Base64.DEFAULT));
 		} else {
-			finalMessage = message;
+			valueToSign = message.getBytes();
+			messageToSend = message;
 		}
+
+		//TODO deplace in helper method
+		//sign message
+		//		Signature instance;
+		//		byte[] signature;
+		//		try {
+		//			instance = Signature.getInstance("SHA1withRSA");
+		//
+		//			instance.initSign(privateKey);
+		//			instance.update(finalMessage);
+		//			signature = instance.sign();
+		//		} catch (NoSuchAlgorithmException e1) {
+		//			Log.e(TAG, "Unable to send message because signature failed");
+		//			e1.printStackTrace();
+		//			return;
+		//		} catch (InvalidKeyException e) {
+		//			Log.e(TAG, "Unable to send message because signature failed");
+		//			e.printStackTrace();
+		//			return;
+		//		} catch (SignatureException e) {
+		//			Log.e(TAG, "Unable to send message because signature failed");
+		//			e.printStackTrace();
+		//			return;
+		//		}
+		//
+		//		String toSend =  Base64.encodeToString(signature,Base64.DEFAULT) + "||" + Base64.encodeToString(finalMessage,Base64.DEFAULT);
 
 		SimpleInterface simpleInterface = mGroupManager.getSignalInterface(groupName, mSimpleService, SimpleInterface.class);
 
 		try {
 			if(simpleInterface != null) {
 				Log.e(TAG,"sending message");
-				simpleInterface.Ping(finalMessage);
+				simpleInterface.Ping(messageToSend);
 			}
 		} catch (BusException e) {
 			e.printStackTrace();
@@ -464,19 +502,27 @@ public class BusHandler extends Handler {
 	@BusSignalHandler(iface = "org.alljoyn.bus.samples.simple.SimpleInterface", signal = "Ping")
 	public void Ping(String str) {
 
+		if(str==null) return;
+
 		//Check if the message contains the salt
-		if(str.startsWith("salt||") && Salt_Base64==null){
-			this.saltReceived(str);
+		if(str.startsWith("salt||") && salt_Base64==null){
+			//if connection not finished, store the message
+			if(!connected){
+				saltMessage = str;
+			} else {
+				this.saltReceived(str);
+			}
 			return;
 		}
 
-		//Save the message if I don't have the salt to compute the key to decrypt them
-		if(Salt_Base64 == null){
-			this.messageQueue.add(str);
+		//if I don't have the salt to compute the key to decrypt the messaage, ignore it
+		if(secretKey == null){
 			return;
 		}
 
-		//Else Decrypt the message
+		//TODO check signature on str
+
+		//Decrypt the message
 		byte[] decrypted = this.decrypt(secretKey, Base64.decode(str.getBytes(), Base64.DEFAULT));
 		if(decrypted==null){
 			//decryption failed
@@ -505,8 +551,6 @@ public class BusHandler extends Handler {
 
 			Identity newIdentity = new Identity(peerName, peerKey);
 
-			//TODO check signature on str
-
 			//Check if identity is already known
 			if(nameMap.containsKey(peerId)){
 				//if yes, check if the same identity as received before
@@ -518,14 +562,14 @@ public class BusHandler extends Handler {
 				}
 			} else {
 				//Save the new identity
+				Log.e(TAG,"identity received "+newIdentity.getName());
 				nameMap.put(peerId, newIdentity);
+				this.sendMyIdentity();
 				//Update the UI
 				LocalBroadcastManager.getInstance(context).sendBroadcast(new Intent("participantStateUpdate"));
 			}
 			return;
 		}
-
-		//TODO check signature on str
 
 		//Send the message to the app
 		Intent i = new Intent("messageArrived");
@@ -534,8 +578,6 @@ public class BusHandler extends Handler {
 		i.putExtra("message", decryptedString);
 		LocalBroadcastManager.getInstance(context).sendBroadcast(i);
 	}
-
-
 
 	/******************************************************************************
 	 * 
@@ -560,18 +602,13 @@ public class BusHandler extends Handler {
 		//first is "salt" prefix
 		tokenizer.nextElement();
 		//then comes the salt
-		Salt_Base64 = (String)tokenizer.nextElement();
+		salt_Base64 = (String)tokenizer.nextElement();
 
-		secretKey = this.derivateKey(userDetails.getString("password", Salt_Base64).toCharArray(), Base64.decode(Salt_Base64, Base64.DEFAULT));
+		secretKey = this.derivateKey(userDetails.getString("password", salt_Base64).toCharArray(), Base64.decode(salt_Base64, Base64.DEFAULT));
 		Log.d(TAG,"Key is "+secretKey);
 
 		//send my identity
 		this.sendMyIdentity();
-
-		//treat message queue
-		while(!this.messageQueue.isEmpty()){
-			this.Ping(messageQueue.poll());
-		}
 
 		//treat message queue
 		while(!this.messageQueueToSend.isEmpty()){
@@ -583,6 +620,7 @@ public class BusHandler extends Handler {
 	 * Send my identity to the other peers
 	 */
 	private void sendMyIdentity(){
+		Log.e(TAG,"Send my identity");
 		String myName = userDetails.getString("identification", "");
 
 		String myKey = "key";
