@@ -313,7 +313,8 @@ public class BusHandler extends Handler {
 		if(mGroupManager.listFoundGroups().contains(groupName)){
 			return Status.FAIL;
 		}
-
+		resetSalt();
+		
 		//Create a salt and derive the key
 		salt_Base64 = Base64.encodeToString(SecureRandom.getSeed(8), Base64.DEFAULT);
 		secretKey = this.derivateKey(userDetails.getString("password", salt_Base64).toCharArray(), Base64.decode(salt_Base64, Base64.DEFAULT));
@@ -335,11 +336,12 @@ public class BusHandler extends Handler {
 
 	private Status doDestroyGroup(String groupName) {
 		amIAdmin = false;
+		resetSalt();
 		return mGroupManager.destroyGroup(groupName);
 	}
 
 	private Status doJoinGroup(String groupName) {
-
+		resetSalt();
 		Status status = mGroupManager.joinGroup(groupName);
 		Log.e(TAG, "Satus of join is"+status);
 		if(status == Status.OK){
@@ -353,7 +355,7 @@ public class BusHandler extends Handler {
 			if(saltMessage!=null){
 				this.saltReceived(saltMessage);
 			}
-			
+			saltMessage = null;
 		}
 		return status;
 	}
@@ -413,6 +415,11 @@ public class BusHandler extends Handler {
 		} else {
 			return nameMap.get(peerId).getName();
 		}
+	}
+	
+	private void resetSalt(){
+		salt_Base64 = null;
+		secretKey = null;
 	}
 
 
