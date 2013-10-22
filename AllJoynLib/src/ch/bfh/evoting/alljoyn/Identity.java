@@ -1,13 +1,15 @@
 package ch.bfh.evoting.alljoyn;
 
+import java.security.PublicKey;
+
 public class Identity {
 
 	
 
 	private String name;
-	private String publicKey;
+	private PublicKey publicKey;
 
-	public Identity(String name, String publicKey){
+	public Identity(String name, PublicKey publicKey){
 		this.name = name;
 		this.publicKey = publicKey;
 	}
@@ -20,11 +22,11 @@ public class Identity {
 		this.name = name;
 	}
 
-	public String getPublicKey() {
+	public PublicKey getPublicKey() {
 		return publicKey;
 	}
 
-	public void setPublicKey(String publicKey) {
+	public void setPublicKey(PublicKey publicKey) {
 		this.publicKey = publicKey;
 	}
 	
