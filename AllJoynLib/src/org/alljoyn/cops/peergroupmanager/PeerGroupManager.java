@@ -306,13 +306,13 @@ public class PeerGroupManager implements PeerGroupManagerInterface {
         String methodName = "createGroup()";
         if(isInvalidStringParam(groupName)) {
             logInfo(methodName, "Invalid group name");
-            return Status.FAIL;
+            return Status.INVALID_DATA;
         }
         
         logInfo("createGroup(" + groupName + "," + locked + ")", "");
         if(isBusInvalid()) {
             logInfo(methodName, "Bus Attachment has already been disconnected");
-            return Status.FAIL;
+            return Status.BUS_NOT_CONNECTED;
         }
         
         Mutable.ShortValue sessionPort = new Mutable.ShortValue(BusAttachment.SESSION_PORT_ANY);
@@ -333,8 +333,7 @@ public class PeerGroupManager implements PeerGroupManagerInterface {
         if(listFoundGroups().contains(groupName) || listHostedGroups().contains(groupName) 
                 || listJoinedGroups().contains(groupName)) {
             logInfo(methodName, groupName + " is already taken");
-            //TODO give another feedback
-            status = Status.FAIL;
+            status = Status.ALREADY_FINDING;
         }
         else {
             logInfo(methodName, groupName + " is available");
@@ -359,7 +358,7 @@ public class PeerGroupManager implements PeerGroupManagerInterface {
                 }
                 // The status check is here in case we advertise the session
                 if(status == Status.OK) {
-                    // Map the newly created group to the session port
+                	// Map the newly created group to the session port
                     addGroupNameToSessionPort(groupName, sessionPort.value);
                     // Successful return here
                     return status;
@@ -571,25 +570,25 @@ public class PeerGroupManager implements PeerGroupManagerInterface {
         Status status = Status.FAIL;
         if(isInvalidStringParam(groupName)) {
             logInfo(methodName, "Invalid group name");
-            return status;
+            return Status.INVALID_DATA;
         }
         logInfo("joinGroup(" + groupName + ")", "");
         // Make sure the bus attachment is set up
         if(isBusInvalid()) {
             logInfo(methodName, "Bus Attachment has already been disconnected");
-            return status;
+            return Status.BUS_NOT_CONNECTED;
         }
         
         // You should not join your own group because you are implicitly a peer
         if(hostedGroups.contains(groupName)) {
             logInfo(methodName, "You are already a peer of your own group - " + groupName);
-            return status;
+            return Status.ALLJOYN_JOINSESSION_REPLY_ALREADY_JOINED;
         }
         
         // Check if the group is being advertised
         if(!foundGroups.containsKey(groupName)) {
             logInfo(methodName, "Group not found - " + groupName);
-            return status;
+            return Status.ALLJOYN_FINDADVERTISEDNAME_REPLY_FAILED;
         }
         
         // Get the advertised name of the group
@@ -609,7 +608,8 @@ public class PeerGroupManager implements PeerGroupManagerInterface {
             // Add the group to the list of joined groups
             joinedGroups.add(groupName);
             addGroupNameToSessionId(groupName, sessionId.value);
-            bus.setLinkTimeout(sessionId.value, new Mutable.IntegerValue(0));
+            Status s2 = bus.setLinkTimeout(sessionId.value, new Mutable.IntegerValue(10));
+            logInfo("setLinkTimeOut()", s2.toString());
         }
         // Try joining with the default session port
         else if(defaultSessionPort != INVALID_SESSION_PORT){
@@ -627,6 +627,8 @@ public class PeerGroupManager implements PeerGroupManagerInterface {
                 // Add the group to the list of joined groups
                 joinedGroups.add(groupName);
                 addGroupNameToSessionId(groupName, sessionId.value);
+                Status s2 = bus.setLinkTimeout(sessionId.value, new Mutable.IntegerValue(10));
+                logInfo("setLinkTimeOut()", s2.toString());
             }
             else {
                 // Return the original failed status if both join attempts fail
@@ -801,7 +803,8 @@ public class PeerGroupManager implements PeerGroupManagerInterface {
             joinedGroups.remove(groupWithHighestGuid);
             joinedGroups.add(masterGroupName);
             int sessionId = groupNameToSessionId.get(groupWithHighestGuid);
-            bus.setLinkTimeout(sessionId, new Mutable.IntegerValue(0));
+            Status s2 = bus.setLinkTimeout(sessionId, new Mutable.IntegerValue(10));
+            logInfo("setLinkTimeOut()", s2.toString());
             removeGroupNameToSessionId(groupWithHighestGuid);
             addGroupNameToSessionId(masterGroupName, sessionId);
             
@@ -1515,7 +1518,8 @@ public class PeerGroupManager implements PeerGroupManagerInterface {
                 if(groupName.contains(".JoC-")) {
                     addGroupNameToSessionId(groupName.substring(0, groupName.lastIndexOf(".")), id);
                 }
-                
+                Status s2 = bus.setLinkTimeout(id, new Mutable.IntegerValue(10));
+            	logInfo("setLinkTimeOut()", s2.toString());
                 // Add the host to the list of participants. Should only happen once
                 if(!getPeers(groupName).contains(bus.getUniqueName())) {
                     logInfo(methodName, "Host adding self to Participant list");
