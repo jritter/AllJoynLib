@@ -41,9 +41,9 @@ public class MessageAuthenticater {
 	}
 	
 	public PublicKey decodePublicKey(String encodedKey){
-		byte[] sigBytes = Base64.decode(encodedKey, Base64.DEFAULT);
+		byte[] keyBytes = Base64.decode(encodedKey, Base64.DEFAULT);
 
-		X509EncodedKeySpec x509KeySpec = new X509EncodedKeySpec(sigBytes);
+		X509EncodedKeySpec x509KeySpec = new X509EncodedKeySpec(keyBytes);
 		KeyFactory keyFact = null;
 		PublicKey pubKey = null;
 		try {

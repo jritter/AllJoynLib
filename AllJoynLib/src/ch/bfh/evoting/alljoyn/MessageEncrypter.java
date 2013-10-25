@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.security.AlgorithmParameters;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
+import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.spec.InvalidKeySpecException;
@@ -22,31 +23,23 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 
-import android.content.Context;
-import android.content.SharedPreferences;
 import android.util.Base64;
 import android.util.Log;
 
 public class MessageEncrypter {
 	
 	private static final String TAG = MessageEncrypter.class.getSimpleName();
-	private static final String PREFS_NAME = "network_preferences";
-
-	
-	private SharedPreferences userDetails;
-
 	
 	private SecretKey secretKey;
 	private byte[] salt;
 	private String password;
 	
 	private boolean isReady = false;
-	private Context context;
+
+	private Object saltShortDigest;
 	
+	public MessageEncrypter(){}
 	
-	public MessageEncrypter(Context context){
-		this.context = context;
-	}
 	/**
 	 * Method which crypt data using a key
 	 * @param key The symetric key
@@ -187,9 +180,6 @@ public class MessageEncrypter {
 	}
 	
 	public void generateSalt(){
-		userDetails = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-		this.password = userDetails.getString("group_password", null);
-		
 		this.salt = SecureRandom.getSeed(8);
 		this.derivateKey(password.toCharArray());
 		Log.d(TAG,"Salt is "+salt);
@@ -199,19 +189,62 @@ public class MessageEncrypter {
 		return salt;
 	}
 	
-	public void setSalt(String salt){
-		userDetails = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-		this.password = userDetails.getString("group_password", null);
+	public String getSaltShortDigest(byte[] salt){
+		MessageDigest md;
+		String saltHash;
+		try {
+			md = MessageDigest.getInstance("SHA-1");
+			md.update(salt, 0, salt.length);
+			saltHash = Base64.encodeToString(md.digest(),Base64.DEFAULT);
+		} catch (NoSuchAlgorithmException e) {
+			Log.e(TAG, "Digest of salt could not be computed");
+			e.printStackTrace();
+			return null;
+		}
 		
-		this.salt = Base64.decode(salt, Base64.DEFAULT);
-		Log.d(TAG,"Saving salt "+salt);
-		this.derivateKey(password.toCharArray());
+		String shortDigest = "";
+		int i=0;
+		while(shortDigest.length()<3){
+			char c = saltHash.charAt(i);
+			if(Character.isLetter(c)){
+				shortDigest = shortDigest+Character.toLowerCase(c);
+			}
+			i++;
+			if(i>=saltHash.length()){
+				break;
+			}
+		}
+		return shortDigest;
+	}
+	
+	public void setSalt(String salt){
+		
+		byte[] tempSalt = Base64.decode(salt, Base64.DEFAULT);
+		if(this.saltShortDigest.equals(getSaltShortDigest(tempSalt))){
+			Log.d(TAG, "received salt digest is "+saltShortDigest+" and computed digest from received salt is "+getSaltShortDigest(tempSalt));
+			this.salt = tempSalt;
+			Log.d(TAG,"Saving salt "+salt);
+			this.derivateKey(password.toCharArray());
+		} else {
+			Log.e(TAG,"Salt is false!");
+		}
+		
+	}
+	
+	public void setPassword(String password){
+		this.password = password;
+	}
+	
+	public void setSaltShortDigest(String saltShortDigest){
+		this.saltShortDigest = saltShortDigest;
 	}
 	
 	public void reset(){
 		this.isReady=false;
 		this.salt = null;
 		this.secretKey = null;
+		this.password = null;
+		this.saltShortDigest = null;
 	}
 	
 	public boolean isReady(){

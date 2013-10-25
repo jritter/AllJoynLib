@@ -18,6 +18,7 @@ package ch.bfh.evoting.alljoyn;
  ******************************************************************************/
 
 
+import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.StringTokenizer;
@@ -30,6 +31,10 @@ import org.alljoyn.bus.annotation.BusSignalHandler;
 import org.alljoyn.cops.peergroupmanager.PeerGroupManager;
 import org.alljoyn.cops.peergroupmanager.BusObjectData;
 import org.alljoyn.cops.peergroupmanager.PeerGroupListener;
+
+import ch.bfh.evoting.alljoyn.AllJoynMessage.Type;
+import ch.bfh.evoting.alljoyn.util.JavaSerialization;
+import ch.bfh.evoting.alljoyn.util.SerializationUtil;
 
 import android.content.Context;
 import android.content.Intent;
@@ -57,10 +62,6 @@ public class BusHandler extends Handler {
 	private static final String SERVICE_NAME = "ch.bfh.evoting";
 	private static final String PREFS_NAME = "network_preferences";
 
-	private static final String MESSAGE_PREFIX_SALT = "salt";
-	private static final String MESSAGE_PREFIX_IDENTITY = "identity";
-
-	private static final String SIGNATURE_SEPARATOR = "--";
 	private static final String MESSAGE_PARTS_SEPARATOR = "||";
 
 	/*
@@ -86,6 +87,7 @@ public class BusHandler extends Handler {
 	private MessageEncrypter messageEncrypter;
 	private MessageAuthenticater messageAuthenticater;
 	private AllJoynMessage signatureVerificationTask;
+	private SerializationUtil su;
 
 	/* 
 	 * These are the messages sent to the BusHandler from the UI.
@@ -110,8 +112,9 @@ public class BusHandler extends Handler {
 		this.context = ctx;
 		userDetails = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
-
-		messageEncrypter = new MessageEncrypter(ctx);
+		su = new SerializationUtil(new JavaSerialization());
+		
+		messageEncrypter = new MessageEncrypter();
 		messageAuthenticater = new MessageAuthenticater();
 		//We generate a new key pair each time the app is started, so we do not need to save it in order to reuse it later
 		//Creating a new key pair takes time, so we create only 512 bits keys. This is sufficient since the key pair is used during 
@@ -130,7 +133,10 @@ public class BusHandler extends Handler {
 			break;
 		}
 		case CREATE_GROUP: {
-			status = doCreateGroup((String) msg.obj);
+			Bundle data = msg.getData();
+			String groupName = data.getString("groupName");
+			String groupPassword = data.getString("groupPassword");
+			status = doCreateGroup(groupName, groupPassword);
 			Log.d(TAG, "status of group creation "+ status);
 			switch(status){
 			case OK:
@@ -162,7 +168,11 @@ public class BusHandler extends Handler {
 			break;
 		}
 		case JOIN_GROUP: {
-			status = doJoinGroup((String) msg.obj); 
+			Bundle data = msg.getData();
+			String groupName = data.getString("groupName");
+			String groupPassword = data.getString("groupPassword");
+			String saltShortDigest = data.getString("saltShortDigest");
+			status = doJoinGroup(groupName, groupPassword, saltShortDigest); 
 			Log.d(TAG, "status of group join "+ status);
 			switch(status){
 
@@ -215,7 +225,8 @@ public class BusHandler extends Handler {
 			String groupName = data.getString("groupName");
 			String pingString = data.getString("pingString");
 			boolean encrypted = data.getBoolean("encrypted", true);
-			doPing(groupName, pingString, encrypted);
+			Type type = (Type)data.getSerializable("type");
+			doPing(groupName, pingString, encrypted, type);
 			break;
 		}
 		case REPROCESS_MESSAGE: {
@@ -271,8 +282,9 @@ public class BusHandler extends Handler {
 					Message msg = obtainMessage(BusHandler.PING);
 					Bundle data = new Bundle();
 					data.putString("groupName", lastJoinedNetwork);
-					data.putString("pingString", MESSAGE_PREFIX_SALT+MESSAGE_PARTS_SEPARATOR+getIdentification()+MESSAGE_PARTS_SEPARATOR+Base64.encodeToString(messageEncrypter.getSalt(), Base64.DEFAULT));
+					data.putString("pingString", Base64.encodeToString(messageEncrypter.getSalt(), Base64.DEFAULT));
 					data.putBoolean("encrypted", false);
+					data.putSerializable("type", Type.SALT);
 					msg.setData(data);
 					sendMessage(msg);
 				}
@@ -312,7 +324,7 @@ public class BusHandler extends Handler {
 	 * @param groupName name of the group (must begin with a character, not a number!)
 	 * @return status of the creation
 	 */
-	private Status doCreateGroup(String groupName) {
+	private Status doCreateGroup(String groupName, String groupPassword) {
 		lastJoinedNetwork = null;
 		//If group already exists, connection will fail
 		//if multicast is not supported on the network, listFoundGroups
@@ -324,6 +336,7 @@ public class BusHandler extends Handler {
 		messageEncrypter.reset();
 
 		//Create a salt and derive the key
+		messageEncrypter.setPassword(groupPassword);
 		messageEncrypter.generateSalt();
 
 		//create the group
@@ -357,9 +370,11 @@ public class BusHandler extends Handler {
 	 * @param groupName name of the group
 	 * @return status of join
 	 */
-	private Status doJoinGroup(String groupName) {
+	private Status doJoinGroup(String groupName, String groupPassword, String saltShortDigest) {
 		amIAdmin = false;
 		messageEncrypter.reset();
+		messageEncrypter.setPassword(groupPassword);
+		messageEncrypter.setSaltShortDigest(saltShortDigest);
 
 		Status status = mGroupManager.joinGroup(groupName);
 
@@ -464,7 +479,10 @@ public class BusHandler extends Handler {
 	public ArrayList<String> listGroups() {
 		return mGroupManager.listFoundGroups();
 	}
-
+	
+	public String getSaltShortDigest(){
+		return this.messageEncrypter.getSaltShortDigest(messageEncrypter.getSalt());
+	}
 
 	/******************************************************************************
 	 * 
@@ -478,43 +496,47 @@ public class BusHandler extends Handler {
 	 * @param message message to send
 	 * @param encrypted indicate if message must be encrypted or not 
 	 */
-	private void doPing(String groupName, String message, boolean encrypted) {
+	private void doPing(String groupName, String message, boolean encrypted, Type type) {
 
-		if(!messageEncrypter.isReady() && encrypted){
+		if((!messageEncrypter.isReady() && encrypted) || !connected){
 			//messageEncrypter is not ready to encrypt a message so we enqueue it
 			Message msg = this.obtainMessage(BusHandler.PING);
 			Bundle data = new Bundle();
 			data.putString("groupName", groupName);
 			data.putString("pingString", message);
+			data.putBoolean("encrypted", encrypted);
+			data.putSerializable("type", type);
 			msg.setData(data);
 			this.sendMessage(msg);
 			Log.d(TAG, "Queueing message to send "+message);
 			return;
 		}
 
-		byte[] valueToSign;
-		String messageToSend;
-		if(encrypted){
-			valueToSign = messageEncrypter.encrypt(message.getBytes());
-			messageToSend = Base64.encodeToString(valueToSign, Base64.DEFAULT);
-			if(valueToSign==null){
-				//encryption failed
-				Log.e(TAG, "Message encryption failed");
-				return;
-			}
-		} else {
-			valueToSign = message.getBytes();
-			messageToSend = message;
+		AllJoynMessage messageObject = new AllJoynMessage(this.messageEncrypter, this.messageAuthenticater);
+		if(type==null) type = Type.NORMAL;
+		messageObject.setType(type);
+		messageObject.setSender(this.getIdentification());
+		boolean messageEncrypted = messageObject.setMessage(message, encrypted);
+		if(!messageEncrypted){
+			Log.e(TAG, "Message encryption failed");
+			return;
 		}
-
-		byte[] signature = messageAuthenticater.sign(valueToSign);
-		if(signature==null){
+		boolean messageSigned = messageObject.signMessage();
+		if(!messageSigned){
 			Log.e(TAG, "Signature failed");
 			return;
 		}
-
-		String toSend =  Base64.encodeToString(signature,Base64.DEFAULT) + SIGNATURE_SEPARATOR + messageToSend;
-
+		
+		messageObject.setMessageAuthenticater(null);
+		messageObject.setMessageEncrypter(null);
+		String toSend = su.serialize(messageObject);
+				
+		try {
+			Log.d(TAG, "sending message of size "+toSend.getBytes("UTF-8").length+" bytes. Maximum allowed by AllJoyn is 128Kb.");
+		} catch (UnsupportedEncodingException e1) {
+			e1.printStackTrace();
+		}
+		
 		SimpleInterface simpleInterface = mGroupManager.getSignalInterface(groupName, mSimpleService, SimpleInterface.class);
 
 		try {
@@ -542,25 +564,25 @@ public class BusHandler extends Handler {
 	public void Ping(String str) {
 		
 		if(str==null) return;
-	
-		String sender = null;
-		if(connected){
-			sender = mGroupManager.getSenderPeerId();
-		}
-
-		/*
-		 * Cut string received in message and signature
-		 */
-		StringTokenizer signatureTokenizer = new java.util.StringTokenizer(str, SIGNATURE_SEPARATOR);
-		if(signatureTokenizer.countTokens()!=2){
-			//invalid message
-			Log.e(TAG, "Invalid message");
-			return;
-		}
-		String signature = signatureTokenizer.nextToken();
-		String message = signatureTokenizer.nextToken();
 		
-		processMessage(new AllJoynMessage(sender, signature, message));
+		AllJoynMessage message = (AllJoynMessage)su.deserialize(str, AllJoynMessage.class);
+		message.setMessageAuthenticater(this.messageAuthenticater);
+		message.setMessageEncrypter(this.messageEncrypter);
+		
+		if(connected){
+			String sender = mGroupManager.getSenderPeerId();
+			//we ask alljoin for the sender id and compare it with the sender found in the message
+			//if it is different, someone is trying to send a message on behalf of another peer
+			if(!message.getSender().equals(sender)){
+				Intent intent = new Intent("attackDetected");
+				intent.putExtra("type", 2);
+				LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+				Log.e(TAG,"The name of the sender of the message indicated by AllJoyn is "+ sender + " but the sender indicated in the message is "+message.getSender()+"!!");	
+				return;
+			}
+		}
+		
+		processMessage(message);
 	}
 
 	/**
@@ -569,16 +591,11 @@ public class BusHandler extends Handler {
 	 */
 	private void processMessage(AllJoynMessage messageObject){
 
-		String message = messageObject.getMessage();
-		String signature = messageObject.getSignature();
-		String sender = messageObject.getSender();
-
-
 		/*
 		 * First we check if decrypter is ready. If not, only Salt message can go further
 		 */
 		//if messageEncrypter isn't ready to decrypt and message is encrypted
-		if(!messageEncrypter.isReady() && !message.startsWith(MESSAGE_PREFIX_SALT)){
+		if(!messageEncrypter.isReady() && messageObject.isEncrypted() /*&& !message.startsWith(MESSAGE_PREFIX_SALT)*/){
 			//requeue the message in order to process it later
 			Message msg = this.obtainMessage(BusHandler.REPROCESS_MESSAGE);
 			Bundle data = new Bundle();
@@ -594,68 +611,58 @@ public class BusHandler extends Handler {
 		 * Second, we check if the message contains the salt and extract it
 		 */
 		//Check if the message contains the salt
-		if(message.startsWith(MESSAGE_PREFIX_SALT) && messageEncrypter.getSalt()==null){
-			this.saltReceived(messageObject);
+		if(messageObject.getType().equals(Type.SALT)){
+			if(messageEncrypter.getSalt()==null){
+				this.saltReceived(messageObject);
+				return;
+			}
+		}
+		
+		
+		/*
+		 * Third, we check if the message contains an identity
+		 */
+		//Check if message contain an identity
+		if(messageObject.getType().equals(Type.IDENTITY)){
+			extractIdentity(messageObject);
 			return;
 		}
 
 		/*
-		 * Third, we verify the signature, if we know the sender, otherwise we set a flag
+		 * Fourth, we verify the signature, if we know the sender, otherwise we set a flag
 		 */
-		boolean signatureControlled = false;
-		if(identityMap.containsKey(sender)){
-			boolean result = messageAuthenticater.verifySignature(identityMap.get(sender).getPublicKey(), Base64.decode(signature,Base64.DEFAULT), Base64.decode(message,Base64.DEFAULT));
+		if(identityMap.containsKey(messageObject.getSender())){
+			boolean result = messageObject.verifyMessage(identityMap.get(messageObject.getSender()).getPublicKey());//messageAuthenticater.verifySignature(identityMap.get(sender).getPublicKey(), Base64.decode(signature,Base64.DEFAULT), Base64.decode(message,Base64.DEFAULT));
 			if(!result){
 				//signature verification failed
 				//ignoring message
 				Log.e(TAG,"Wrong signature");
 				return;
 			} else {
-				signatureControlled = true;
 				Log.d(TAG,"Signature correct");
 			}
 		} else {
-			signatureControlled = false;
+			//message not containing a salt nor an identity coming from an unknow person => ignore 
+			return;
 		}
 
 		/*
-		 * Fourth, we decrypt the message
+		 * Fifth, we decrypt the message
 		 */
-		String decryptedString = messageEncrypter.decrypt(Base64.decode(message.getBytes(), Base64.DEFAULT));
+		String decryptedString = messageObject.getMessage();//messageEncrypter.decrypt(Base64.decode(message.getBytes(), Base64.DEFAULT));
 		if(decryptedString==null || decryptedString.equals("")){
 			//decryption failed
 			Log.d(TAG, "Message decryption failed");
 			return;
 		}
 
-
 		/*
-		 * Fifth, we check if the message contains an identity
-		 */
-		//Check if message contain an identity
-		if(decryptedString.startsWith(MESSAGE_PREFIX_IDENTITY)){
-			extractIdentity(decryptedString, messageObject);
-			return;
-		}
-		
-		
-		/*
-		 * Sixth, when the message does not contain an identity and its signature could not be verified
-		 * that means it is coming from someone we don't know. We ignore the message.
-		 */
-		if(!signatureControlled){
-			//message not containing a salt nor an identity coming from an unknow person => ignore 
-			return;
-		}
-
-
-		/*
-		 * Seventh, we transmit message to the application
+		 * Sixth, we transmit message to the application
 		 */
 		//Send the message to the app
 		Intent i = new Intent("messageArrived");
-		i.putExtra("senderId", sender);
-		i.putExtra("senderName", identityMap.get(sender).getName());
+		i.putExtra("senderId", messageObject.getSender());
+		i.putExtra("senderName", identityMap.get(messageObject.getSender()).getName());
 		i.putExtra("message", decryptedString);
 		LocalBroadcastManager.getInstance(context).sendBroadcast(i);
 	}
@@ -672,18 +679,16 @@ public class BusHandler extends Handler {
 	 * @param message the decrypted content of the message
 	 * @param messageObject the original message received
 	 */
-	private void extractIdentity(String message, AllJoynMessage messageObject) {
+	private void extractIdentity(AllJoynMessage messageObject) {
 		//Get the name and its corresponding key key
-		StringTokenizer tokenizer = new java.util.StringTokenizer(message, MESSAGE_PARTS_SEPARATOR);
-		if(tokenizer.countTokens()!=4){
+		StringTokenizer tokenizer = new StringTokenizer(messageObject.getMessage(), MESSAGE_PARTS_SEPARATOR);
+		if(tokenizer.countTokens()!=2){
 			//malformed string
-			Log.d(TAG,"String was not composed of 4 parts");
+			Log.d(TAG,"String was not composed of 2 parts");
 			return;
 		}
-		//first come "identity"
-		tokenizer.nextElement();
-		//then peerId
-		String peerId = (String)tokenizer.nextElement();
+		
+		String peerId = messageObject.getSender();
 		//then peerName
 		String peerName = (String)tokenizer.nextElement();
 		//and finally peerKey
@@ -703,7 +708,7 @@ public class BusHandler extends Handler {
 				return;
 			}
 		} else {
-			boolean verification = messageAuthenticater.verifySignature(newIdentity.getPublicKey(), Base64.decode(messageObject.getSignature(), Base64.DEFAULT), Base64.decode(messageObject.getMessage(), Base64.DEFAULT));
+			boolean verification = messageObject.verifyMessage(newIdentity.getPublicKey());
 			if(verification){
 				//Save the new identity
 				Log.d(TAG,"identity received "+newIdentity.getName());
@@ -729,21 +734,21 @@ public class BusHandler extends Handler {
 	 */
 	private void saltReceived(AllJoynMessage message){
 
-		StringTokenizer tokenizer = new java.util.StringTokenizer(message.getMessage(), MESSAGE_PARTS_SEPARATOR);
-		if(tokenizer.countTokens()!=3){
-			//malformed string
-			Log.d(TAG,"Salt string was not composed of 2 parts");
-			return;
+		if(messageEncrypter.getSalt()==null){
+			messageEncrypter.setSalt(message.getMessage());
+		} else{
+			if(!messageEncrypter.getSalt().equals(message.getMessage())){
+				//someone is sending a false salt
+				Intent intent = new Intent("attackDetected");
+				intent.putExtra("type", 3);
+				LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+				Log.e(TAG,"Different salts have been received!");
+				return;
+			}
 		}
-		//first is "salt" prefix
-		tokenizer.nextElement();
-		//then comes the sender identity
-		String sender = (String)tokenizer.nextElement();
-		//then comes the salt
-		messageEncrypter.setSalt((String)tokenizer.nextElement());
+		
 		
 		//Add to verification task in order to check the signature later
-		message.setSender(sender);
 		signatureVerificationTask = message;
 
 		//send my identity
@@ -762,13 +767,14 @@ public class BusHandler extends Handler {
 			Log.e(TAG, "Key encoding not supported");
 		}
 		String myKey = Base64.encodeToString(publicKeyBytes, Base64.DEFAULT);
-		String identity = MESSAGE_PREFIX_IDENTITY+MESSAGE_PARTS_SEPARATOR+mGroupManager.getMyPeerId()+MESSAGE_PARTS_SEPARATOR+myName+MESSAGE_PARTS_SEPARATOR+myKey;
+		String identity = myName+MESSAGE_PARTS_SEPARATOR+myKey;
 		Log.d(TAG,"Send my identity");
 
 		Message msg = obtainMessage(BusHandler.PING);
 		Bundle data = new Bundle();
 		data.putString("groupName", lastJoinedNetwork);
 		data.putString("pingString", identity);
+		data.putSerializable("type", Type.IDENTITY);
 		msg.setData(data);
 		sendMessage(msg);
 	}
@@ -780,7 +786,7 @@ public class BusHandler extends Handler {
 	private void verifySignatureSalt(){
 		AllJoynMessage message =  signatureVerificationTask;
 		
-		boolean verification = messageAuthenticater.verifySignature(identityMap.get(message.getSender()).getPublicKey(), Base64.decode(message.getSignature(),Base64.DEFAULT), message.getMessage().getBytes());
+		boolean verification = message.verifyMessage(identityMap.get(message.getSender()).getPublicKey());//messageAuthenticater.verifySignature(identityMap.get(message.getSender()).getPublicKey(), Base64.decode(message.getSignature(),Base64.DEFAULT), message.getMessage().getBytes());
 		if(verification){
 			//everything OK
 			Log.d(TAG, "Signature of earlyier received message was OK");
