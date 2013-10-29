@@ -192,10 +192,13 @@ public class MessageEncrypter {
 	public String getSaltShortDigest(byte[] salt){
 		MessageDigest md;
 		String saltHash;
+		Log.d(TAG, "Computing salt digest");
 		try {
 			md = MessageDigest.getInstance("SHA-1");
 			md.update(salt, 0, salt.length);
 			saltHash = Base64.encodeToString(md.digest(),Base64.DEFAULT);
+			Log.d(TAG, "Salt digest "+saltHash);
+
 		} catch (NoSuchAlgorithmException e) {
 			Log.e(TAG, "Digest of salt could not be computed");
 			e.printStackTrace();
@@ -207,18 +210,19 @@ public class MessageEncrypter {
 		while(shortDigest.length()<3){
 			char c = saltHash.charAt(i);
 			if(Character.isLetter(c)){
-				shortDigest = shortDigest+Character.toLowerCase(c);
+				shortDigest = shortDigest.concat(String.valueOf(Character.toLowerCase(c)));
 			}
 			i++;
 			if(i>=saltHash.length()){
 				break;
 			}
 		}
+		Log.d(TAG, "Short digest is "+shortDigest);
+
 		return shortDigest;
 	}
 	
 	public void setSalt(String salt){
-		
 		byte[] tempSalt = Base64.decode(salt, Base64.DEFAULT);
 		if(this.saltShortDigest.equals(getSaltShortDigest(tempSalt))){
 			Log.d(TAG, "received salt digest is "+saltShortDigest+" and computed digest from received salt is "+getSaltShortDigest(tempSalt));

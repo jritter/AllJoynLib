@@ -260,17 +260,14 @@ public class BusHandler extends Handler {
 			public void foundAdvertisedName(String groupName, short transport) {}
 
 			@Override
-			public void lostAdvertisedName(String groupName, short transport) {
+			public void lostAdvertisedName(String groupName, short transport) {}
+
+			@Override
+			public void groupLost(String groupName) {
 				Log.d(TAG, "Group "+groupName+" was destroyed.");
 				Intent i = new Intent("groupDestroyed");
 				i.putExtra("groupName", groupName);
 				LocalBroadcastManager.getInstance(context).sendBroadcast(i);
-			}
-
-			@Override
-			public void groupLost(String groupName) {
-				Log.d(TAG, "peer left");
-				LocalBroadcastManager.getInstance(context).sendBroadcast(new Intent("participantStateUpdate"));
 			}
 
 			@Override
@@ -297,9 +294,10 @@ public class BusHandler extends Handler {
 			@Override
 			public void peerRemoved(String peerId, String groupName,
 					int numPeers) {
-				super.peerRemoved(peerId, groupName, numPeers);
 				//update UI
+				Log.d(TAG, "peer left");
 				LocalBroadcastManager.getInstance(context).sendBroadcast(new Intent("participantStateUpdate"));
+				super.peerRemoved(peerId, groupName, numPeers);
 			}
 			
 		};
@@ -680,6 +678,8 @@ public class BusHandler extends Handler {
 	 * @param messageObject the original message received
 	 */
 	private void extractIdentity(AllJoynMessage messageObject) {
+		Log.d(TAG, "Exctracting indentity "+ messageObject.getMessage());
+		
 		//Get the name and its corresponding key key
 		StringTokenizer tokenizer = new StringTokenizer(messageObject.getMessage(), MESSAGE_PARTS_SEPARATOR);
 		if(tokenizer.countTokens()!=2){
@@ -733,6 +733,8 @@ public class BusHandler extends Handler {
 	 * @param message original message containing the salt
 	 */
 	private void saltReceived(AllJoynMessage message){
+		
+		Log.d(TAG, "Exctracting salt "+ message.getMessage());
 
 		if(messageEncrypter.getSalt()==null){
 			messageEncrypter.setSalt(message.getMessage());
@@ -752,14 +754,17 @@ public class BusHandler extends Handler {
 		signatureVerificationTask = message;
 
 		//send my identity
-		if(connected)
+		if(connected){
 			this.sendMyIdentity();
+		}
 	}
 
 	/**
 	 * Helper method send my identity to the other peers
 	 */
 	private void sendMyIdentity(){
+		Log.d(TAG, "Sending my identity");
+
 		String myName = userDetails.getString("identification", "");
 
 		byte[] publicKeyBytes = messageAuthenticater.getMyPublicKey().getEncoded();
