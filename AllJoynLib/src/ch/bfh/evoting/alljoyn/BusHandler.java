@@ -14,7 +14,7 @@ package ch.bfh.evoting.alljoyn;
  *    See the license for the specific language governing permissions and
  *    limitations under the license.
  *    
- *    Modified by Philémon von Bergen
+ *    Modified by Phil��mon von Bergen
  ******************************************************************************/
 
 
@@ -194,6 +194,12 @@ public class BusHandler extends Handler {
 				intent.putExtra("error", 3);
 				LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
 				break;
+			case ALLJOYN_JOINSESSION_REPLY_FAILED:
+				//group not joined
+				intent = new Intent("networkConnectionFailed");
+				intent.putExtra("error", 4);
+				LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+				break;
 			default:
 				LocalBroadcastManager.getInstance(context).sendBroadcast(new Intent("networkConnectionFailed"));
 				break;
@@ -264,6 +270,12 @@ public class BusHandler extends Handler {
 
 			@Override
 			public void groupLost(String groupName) {
+				if(mGroupManager.listHostedGroups().contains(groupName) && mGroupManager.getNumPeers(groupName)==1){
+					//signal was send because admin stays alone in the group
+					//not necessary to manage this case for us
+					Log.d(TAG,"Group destroyed event ignored");
+					return;
+				}
 				Log.d(TAG, "Group "+groupName+" was destroyed.");
 				Intent i = new Intent("groupDestroyed");
 				i.putExtra("groupName", groupName);
