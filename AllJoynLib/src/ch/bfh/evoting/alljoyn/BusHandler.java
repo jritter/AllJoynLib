@@ -473,7 +473,7 @@ public class BusHandler extends Handler {
 
 	/**
 	 * Get the well-known name of the given peer
-	 * @param peerId the peer unique identificator
+	 * @param peerId the peer unique identifier
 	 * @return the well-known name of the given peer
 	 */
 	public String getPeerWellKnownName(String peerId){
