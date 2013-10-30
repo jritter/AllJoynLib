@@ -2,8 +2,6 @@ package ch.bfh.evoting.alljoyn.util;
 
 import com.google.gson.Gson;
 
-
-
 /**
  * Concrete strategy for serialization using Json serialization
  * @author Philémon von Bergen

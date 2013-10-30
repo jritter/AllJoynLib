@@ -20,7 +20,10 @@ import org.alljoyn.bus.BusException;
 import org.alljoyn.bus.annotation.BusInterface;
 import org.alljoyn.bus.annotation.BusSignal;
 
-
+/**
+ * AllJoyn Interface used to receive messages
+ *
+ */
 @BusInterface(name = "org.alljoyn.bus.samples.simple.SimpleInterface")
 public interface SimpleInterface {
 

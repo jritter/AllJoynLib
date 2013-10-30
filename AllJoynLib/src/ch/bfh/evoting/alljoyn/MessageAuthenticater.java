@@ -17,6 +17,11 @@ import java.security.spec.X509EncodedKeySpec;
 import android.util.Base64;
 import android.util.Log;
 
+/**
+ * Class used to sign and verify messages' signature
+ * @author Philémon von Bergen
+ *
+ */
 public class MessageAuthenticater {
 
 	private static final String TAG = MessageAuthenticater.class.getSimpleName();
@@ -24,6 +29,13 @@ public class MessageAuthenticater {
 	private PublicKey publicKey;
 	private PrivateKey privateKey;
 	
+	/**
+	 * Generate a key pair used to sign messages' content and verify signatures
+	 * We limit the size of these RSA keys to 512 bits. The reason is that we want to generate
+	 * a new key pair each time the application is launched, in order not to have to save it.
+	 * In our case, 512 bits is enough since the keys are not used longer than one our, what is to less 
+	 * to make a bruteforce attack.
+	 */
 	public void generateKeys(){
 		try {
 			KeyPairGenerator generator;
@@ -40,6 +52,11 @@ public class MessageAuthenticater {
 		}           
 	}
 	
+	/**
+	 * Decode a Base64 encoded public key in a PublicKey object
+	 * @param encodedKey the Base64 encoded key
+	 * @return the PublicKey object
+	 */
 	public PublicKey decodePublicKey(String encodedKey){
 		byte[] keyBytes = Base64.decode(encodedKey, Base64.DEFAULT);
 
@@ -62,6 +79,11 @@ public class MessageAuthenticater {
 		return pubKey;
 	}
 	
+	/**
+	 * Sign the given content
+	 * @param valueToSign content to sign
+	 * @return the byte array composing the signature
+	 */
 	public byte[] sign(byte[] valueToSign) {
 		//sign message
 		Signature instance;
@@ -94,6 +116,13 @@ public class MessageAuthenticater {
 
 	}
 
+	/**
+	 * Verify a signature
+	 * @param publicKey the public key corresponding to the private key used to generated the signature
+	 * @param signature the signature
+	 * @param message the message's content that was signed
+	 * @return whether the signature is correct or not
+	 */
 	public boolean verifySignature(PublicKey publicKey, byte[] signature, byte[] message) {
 		Signature instance;
 
@@ -123,6 +152,10 @@ public class MessageAuthenticater {
 
 	}
 	
+	/**
+	 * Get the generated public key
+	 * @return the generated public key
+	 */
 	public PublicKey getMyPublicKey(){
 		return this.publicKey;
 	}

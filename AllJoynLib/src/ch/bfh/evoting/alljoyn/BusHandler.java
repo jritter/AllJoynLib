@@ -89,9 +89,7 @@ public class BusHandler extends Handler {
 	private AllJoynMessage signatureVerificationTask;
 	private SerializationUtil su;
 
-	/* 
-	 * These are the messages sent to the BusHandler from the UI.
-	 */
+
 	public static final int INIT = 1;
 	public static final int CREATE_GROUP = 2;
 	public static final int DESTROY_GROUP = 3;
@@ -105,6 +103,11 @@ public class BusHandler extends Handler {
 	public static final int PING = 13;
 	public static final int REPROCESS_MESSAGE = 14;
 
+	/**
+	 * Initialization of the bus handler
+	 * @param looper
+	 * @param ctx Android context of the application
+	 */
 	public BusHandler(Looper looper, Context ctx) {
 		super(looper);
 		// Connect to an AllJoyn object.
@@ -460,7 +463,7 @@ public class BusHandler extends Handler {
 	}
 
 	/**
-	 * Get all participant of the given group
+	 * Get all participants of the given group
 	 * @param groupName
 	 * @return list of participant unique id
 	 */
@@ -490,6 +493,10 @@ public class BusHandler extends Handler {
 		return mGroupManager.listFoundGroups();
 	}
 	
+	/**
+	 * Get the three first letters of the digest (Base64 encoded) of the generated salt
+	 * @return the three first letters of the digest of the generated salt
+	 */
 	public String getSaltShortDigest(){
 		return this.messageEncrypter.getSaltShortDigest(messageEncrypter.getSalt());
 	}
@@ -505,11 +512,12 @@ public class BusHandler extends Handler {
 	 * @param groupName group to send the message to
 	 * @param message message to send
 	 * @param encrypted indicate if message must be encrypted or not 
+	 * @param type type of the content in the message
 	 */
 	private void doPing(String groupName, String message, boolean encrypted, Type type) {
 
+		//if messageEncrypter is not ready or group joining is not terminated, we enqueue the message
 		if((!messageEncrypter.isReady() && encrypted) || !connected){
-			//messageEncrypter is not ready to encrypt a message so we enqueue it
 			Message msg = this.obtainMessage(BusHandler.PING);
 			Bundle data = new Bundle();
 			data.putString("groupName", groupName);
@@ -522,6 +530,7 @@ public class BusHandler extends Handler {
 			return;
 		}
 
+		//Create the message object with the received parameter
 		AllJoynMessage messageObject = new AllJoynMessage(this.messageEncrypter, this.messageAuthenticater);
 		if(type==null) type = Type.NORMAL;
 		messageObject.setType(type);
@@ -537,6 +546,7 @@ public class BusHandler extends Handler {
 			return;
 		}
 		
+		//Serialize the message
 		messageObject.setMessageAuthenticater(null);
 		messageObject.setMessageEncrypter(null);
 		String toSend = su.serialize(messageObject);
@@ -547,8 +557,8 @@ public class BusHandler extends Handler {
 			e1.printStackTrace();
 		}
 		
+		//Send the message
 		SimpleInterface simpleInterface = mGroupManager.getSignalInterface(groupName, mSimpleService, SimpleInterface.class);
-
 		try {
 			if(simpleInterface != null) {
 				simpleInterface.Ping(toSend);
@@ -575,6 +585,7 @@ public class BusHandler extends Handler {
 		
 		if(str==null) return;
 		
+		//Deserialize the message
 		AllJoynMessage message = (AllJoynMessage)su.deserialize(str, AllJoynMessage.class);
 		message.setMessageAuthenticater(this.messageAuthenticater);
 		message.setMessageEncrypter(this.messageEncrypter);
@@ -686,11 +697,10 @@ public class BusHandler extends Handler {
 
 	/**
 	 * Helper method extracting an identity from a received message
-	 * @param message the decrypted content of the message
 	 * @param messageObject the original message received
 	 */
 	private void extractIdentity(AllJoynMessage messageObject) {
-		Log.d(TAG, "Exctracting indentity "+ messageObject.getMessage());
+		Log.d(TAG, "Exctracting identity "+ messageObject.getMessage());
 		
 		//Get the name and its corresponding key key
 		StringTokenizer tokenizer = new StringTokenizer(messageObject.getMessage(), MESSAGE_PARTS_SEPARATOR);

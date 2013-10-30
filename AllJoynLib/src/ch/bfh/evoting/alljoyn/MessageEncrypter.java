@@ -26,6 +26,11 @@ import javax.crypto.spec.SecretKeySpec;
 import android.util.Base64;
 import android.util.Log;
 
+/**
+ * Class used to encrypt and decrypt messages
+ * @author Philémon von Bergen
+ *
+ */
 public class MessageEncrypter {
 	
 	private static final String TAG = MessageEncrypter.class.getSimpleName();
@@ -38,17 +43,14 @@ public class MessageEncrypter {
 
 	private Object saltShortDigest;
 	
-	public MessageEncrypter(){}
-	
 	/**
-	 * Method which crypt data using a key
-	 * @param key The symetric key
+	 * Method that encrypts data
 	 * @param data The data which should be encrypted
-	 * @return The encrypted bytes, null otherwise
+	 * @return The encrypted bytes, null if encryption failed
 	 * 
-	 * Inspired from http://stackoverflow.com/questions/992019/java-256-bit-aes-password-based-encryption
 	 */
 	public byte[] encrypt(byte[] data) {
+		//Inspired from http://stackoverflow.com/questions/992019/java-256-bit-aes-password-based-encryption
 
 		Cipher cipher;
 		try {
@@ -98,15 +100,13 @@ public class MessageEncrypter {
 
 	/**
 	 * 
-	 * Method which decrypts data using a key
-	 * @param key The symetric key
-	 * @param encrypted The data to be decrypted
+	 * Method that decrypts data
 	 * @return the decrypted string if decryption was successful,
 	 *         null otherwise
 	 *         
-	 * Inspired from http://stackoverflow.com/questions/992019/java-256-bit-aes-password-based-encryption
 	 */
 	public String decrypt(byte[] ciphertext) {
+		//Inspired from http://stackoverflow.com/questions/992019/java-256-bit-aes-password-based-encryption
 
 		//iv is same as block size: for AES => 128 bits = 16 bytes
 		byte[] iv = Arrays.copyOfRange(ciphertext, 0, 16);
@@ -151,14 +151,11 @@ public class MessageEncrypter {
 
 
 	/**
-	 * Key derivation method from password
+	 * Key derivation method from the given password
 	 * @param password password to derive
-	 * @param salt salt to take into account to derive the key
-	 * @return the symmetric key
-	 * Inspired from http://stackoverflow.com/questions/992019/java-256-bit-aes-password-based-encryption
 	 */
 	private void derivateKey(char[] password) {
-				
+		//Inspired from http://stackoverflow.com/questions/992019/java-256-bit-aes-password-based-encryption
 		SecretKeyFactory factory;
 		try {
 			factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA1");
@@ -179,17 +176,48 @@ public class MessageEncrypter {
 
 	}
 	
+	/**
+	 * Generate a salt that will be used in the symmetric key derivation
+	 */
 	public void generateSalt(){
 		this.salt = SecureRandom.getSeed(8);
 		this.derivateKey(password.toCharArray());
 		Log.d(TAG,"Salt is "+salt);
 	}
 	
+	/**
+	 * Set the salt
+	 * @param salt the Base64 encoded salt
+	 */
+	public void setSalt(String salt){
+		byte[] tempSalt = Base64.decode(salt, Base64.DEFAULT);
+		if(this.saltShortDigest.equals(getSaltShortDigest(tempSalt))){
+			Log.d(TAG, "received salt digest is "+saltShortDigest+" and computed digest from received salt is "+getSaltShortDigest(tempSalt));
+			this.salt = tempSalt;
+			Log.d(TAG,"Saving salt "+salt);
+			this.derivateKey(password.toCharArray());
+		} else {
+			Log.e(TAG,"Salt is false!");
+		}	
+	}
+	
+	/**
+	 * Get the earlier generated or set salt
+	 * @return the earlier generated or set salt
+	 */
 	public byte[] getSalt(){
 		return salt;
 	}
 	
+	/**
+	 * Compute a truncated digest on the salt
+	 * We only take the three first letters (not chars!) of the Base64 encoded digest, because
+	 * this truncated digest must be transmitted with the group password (only letters)
+	 * @param salt the salt from on we want to compute the digest 
+	 * @return the three first letters of the Base64 encoded digest
+	 */
 	public String getSaltShortDigest(byte[] salt){
+		//Compute the digest
 		MessageDigest md;
 		String saltHash;
 		Log.d(TAG, "Computing salt digest");
@@ -197,14 +225,13 @@ public class MessageEncrypter {
 			md = MessageDigest.getInstance("SHA-1");
 			md.update(salt, 0, salt.length);
 			saltHash = Base64.encodeToString(md.digest(),Base64.DEFAULT);
-			Log.d(TAG, "Salt digest "+saltHash);
-
 		} catch (NoSuchAlgorithmException e) {
 			Log.e(TAG, "Digest of salt could not be computed");
 			e.printStackTrace();
 			return null;
 		}
 		
+		//Truncate the digest
 		String shortDigest = "";
 		int i=0;
 		while(shortDigest.length()<3){
@@ -222,27 +249,25 @@ public class MessageEncrypter {
 		return shortDigest;
 	}
 	
-	public void setSalt(String salt){
-		byte[] tempSalt = Base64.decode(salt, Base64.DEFAULT);
-		if(this.saltShortDigest.equals(getSaltShortDigest(tempSalt))){
-			Log.d(TAG, "received salt digest is "+saltShortDigest+" and computed digest from received salt is "+getSaltShortDigest(tempSalt));
-			this.salt = tempSalt;
-			Log.d(TAG,"Saving salt "+salt);
-			this.derivateKey(password.toCharArray());
-		} else {
-			Log.e(TAG,"Salt is false!");
-		}
-		
-	}
-	
+	/**
+	 * Set the password used to derivate the symmetric key
+	 * @param password the password used to derivate the symmetric key
+	 */
 	public void setPassword(String password){
 		this.password = password;
 	}
 	
+	/**
+	 * Set the truncated digest of the salt that will be received later
+	 * @param saltShortDigest the truncated digest of the salt that will be received later
+	 */
 	public void setSaltShortDigest(String saltShortDigest){
 		this.saltShortDigest = saltShortDigest;
 	}
 	
+	/**
+	 * Reset the state of the message encrypter
+	 */
 	public void reset(){
 		this.isReady=false;
 		this.salt = null;
@@ -251,6 +276,10 @@ public class MessageEncrypter {
 		this.saltShortDigest = null;
 	}
 	
+	/**
+	 * Indicate if the symmetric key has been derivated and message encrypter is ready to encrypt/decrypt
+	 * @return true is message encrypter is ready to encrypt/decrypt, false otherwise
+	 */
 	public boolean isReady(){
 		return isReady;
 	}

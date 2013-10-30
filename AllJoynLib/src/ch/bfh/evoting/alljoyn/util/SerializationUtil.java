@@ -36,5 +36,4 @@ public class SerializationUtil {
 	public Object deserialize(String string, Class<?> classType){
 		return this.s.deserialize(string, classType);
 	}
-
 }

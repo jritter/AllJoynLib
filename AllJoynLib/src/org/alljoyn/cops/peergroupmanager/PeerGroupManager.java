@@ -16,13 +16,13 @@
 
 package org.alljoyn.cops.peergroupmanager;
 
+import android.annotation.SuppressLint;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
 
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 
 import org.alljoyn.bus.BusAttachment;
 import org.alljoyn.bus.BusException;
@@ -45,7 +45,7 @@ import org.alljoyn.bus.Status;
  * minimum knowledge of AllJoyn concepts which is great for rapid prototyping.
  * The Peer Group Manager provides a mapping between high level AllJoyn
  * concepts and underlying implementation details abstracting out some of the
- * more subtle aspects that aren�t always relevant to new developers of
+ * more subtle aspects that aren't always relevant to new developers of
  * AllJoyn. It also encapsulates a lot of boilerplate AllJoyn code for typical
  * applications including setting default parameters, enforcing a naming
  * convention for advertisements, etc. making the code simpler and cleaner.
@@ -53,6 +53,7 @@ import org.alljoyn.bus.Status;
  * so if your project is advanced in nature, then this component might not be
  * right for you.
  */
+@SuppressLint("UseSparseArrays")
 public class PeerGroupManager implements PeerGroupManagerInterface {
 	/* Load the native alljoyn_java library. */
     static {
@@ -99,7 +100,7 @@ public class PeerGroupManager implements PeerGroupManagerInterface {
     // Map group names to session Ids
     private HashMap<String,Integer> groupNameToSessionId = new HashMap<String,Integer>();
     // Map session ids to group names
-    private HashMap<Integer,String> sessionIdToGroupName = new HashMap<Integer,String>();
+	private HashMap<Integer,String> sessionIdToGroupName = new HashMap<Integer,String>();
     
     // HashMaps to map hosted group names to session ports
     private HashMap<String,Short> groupNameToSessionPort = new HashMap<String,Short>();
@@ -325,9 +326,6 @@ public class PeerGroupManager implements PeerGroupManagerInterface {
         if(status != Status.OK) {
             return status;
         }
-        //TODO where to put             bus.setLinkTimeout(sessionId.value, new Mutable.IntegerValue(0));
-        //TODO really needed ?
-        //TODO feedback peerLost ??
         
         // Make sure the group name isn't already taken
         if(listFoundGroups().contains(groupName) || listHostedGroups().contains(groupName) 
@@ -1499,7 +1497,8 @@ public class PeerGroupManager implements PeerGroupManagerInterface {
          */
         @Override
         public void sessionJoined(final short sessionPort, final int id, final String joiner) {
-            String methodName = "PGSessionPortListener.sessionJoined()";
+            @SuppressWarnings("unused")
+			String methodName = "PGSessionPortListener.sessionJoined()";
             logInfo("PGSessionPortListener.sessionJoined(" + sessionPort + "," + joiner + ")", "");
             callbackHandler.post(new Runnable() {
                 public void run() {
@@ -1854,7 +1853,6 @@ public class PeerGroupManager implements PeerGroupManagerInterface {
      * 
      * @param busObjects  the list of bus objects and their corresponding 
      *                    object paths to register
-     * @return  OK if successful
      */
     private void registerBusObjects(ArrayList<BusObjectData> busObjects) {
         if(busObjects == null) {
