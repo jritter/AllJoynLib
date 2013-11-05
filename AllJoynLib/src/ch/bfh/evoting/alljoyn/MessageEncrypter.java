@@ -217,6 +217,8 @@ public class MessageEncrypter {
 	 * @return the three first letters of the Base64 encoded digest
 	 */
 	public String getSaltShortDigest(byte[] salt){
+		if(salt==null) return "";
+		
 		//Compute the digest
 		MessageDigest md;
 		String saltHash;

@@ -388,7 +388,7 @@ public class BusHandler extends Handler {
 		messageEncrypter.reset();
 		messageEncrypter.setPassword(groupPassword);
 		messageEncrypter.setSaltShortDigest(saltShortDigest);
-
+		Log.d(TAG, "Joining group...");
 		Status status = mGroupManager.joinGroup(groupName);
 
 		if(status == Status.OK){
@@ -464,7 +464,7 @@ public class BusHandler extends Handler {
 
 	/**
 	 * Get all participants of the given group
-	 * @param groupName
+	 * @param groupName the name of the group of which we want to get the participants
 	 * @return list of participant unique id
 	 */
 	public ArrayList<String> getParticipants(String groupName) {
