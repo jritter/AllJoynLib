@@ -2,14 +2,12 @@ package ch.bfh.evoting.alljoyn;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.security.AlgorithmParameters;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.spec.InvalidKeySpecException;
-import java.security.spec.InvalidParameterSpecException;
 import java.security.spec.KeySpec;
 import java.util.Arrays;
 
@@ -38,6 +36,7 @@ public class MessageEncrypter {
 	private SecretKey secretKey;
 	private byte[] salt;
 	private String password;
+	private SecureRandom random;
 	
 	private boolean isReady = false;
 
@@ -55,10 +54,20 @@ public class MessageEncrypter {
 		Cipher cipher;
 		try {
 			cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+			
+			// cipher.getParameters() seems to return null on Android 4.3 (Bug?)
+			// Solution implemented from here: 
+			// https://code.google.com/p/android/issues/detail?id=58191
+			
+			/*
 			cipher.init(Cipher.ENCRYPT_MODE, secretKey);
 			AlgorithmParameters params = cipher.getParameters();
-
 			byte[] iv = params.getParameterSpec(IvParameterSpec.class).getIV();
+			*/
+			
+			byte [] iv = generateIv();
+			cipher.init(Cipher.ENCRYPT_MODE, secretKey, new IvParameterSpec(iv));
+			
 			byte[] cipherText = cipher.doFinal(data); 
 
 			ByteArrayOutputStream outputStream = new ByteArrayOutputStream( );
@@ -78,10 +87,10 @@ public class MessageEncrypter {
 			Log.d(TAG, e.getMessage()+" ");
 			e.printStackTrace();
 			return null;
-		} catch (InvalidParameterSpecException e) {
+		/*} catch (InvalidParameterSpecException e) {
 			Log.d(TAG, e.getMessage()+" ");
 			e.printStackTrace();
-			return null;
+			return null;*/
 		} catch (IllegalBlockSizeException e) {
 			Log.d(TAG, e.getMessage()+" ");
 			e.printStackTrace();
@@ -91,6 +100,10 @@ public class MessageEncrypter {
 			e.printStackTrace();
 			return null;
 		} catch (IOException e) {
+			Log.d(TAG, e.getMessage()+" ");
+			e.printStackTrace();
+			return null;
+		} catch (InvalidAlgorithmParameterException e) {
 			Log.d(TAG, e.getMessage()+" ");
 			e.printStackTrace();
 			return null;
@@ -284,6 +297,14 @@ public class MessageEncrypter {
 	 */
 	public boolean isReady(){
 		return isReady;
+	}
+	
+	private byte[] generateIv(){
+		
+		random = new SecureRandom();
+	    byte[] iv = new byte [16];
+	    random.nextBytes(iv);
+	    return iv;
 	}
 
 }
