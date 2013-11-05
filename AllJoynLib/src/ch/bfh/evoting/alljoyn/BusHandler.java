@@ -105,7 +105,7 @@ public class BusHandler extends Handler {
 
 	/**
 	 * Initialization of the bus handler
-	 * @param looper
+	 * @param looper looper
 	 * @param ctx Android context of the application
 	 */
 	public BusHandler(Looper looper, Context ctx) {
@@ -338,6 +338,7 @@ public class BusHandler extends Handler {
 	 * @return status of the creation
 	 */
 	private Status doCreateGroup(String groupName, String groupPassword) {
+		connected = false;
 		lastJoinedNetwork = null;
 		//If group already exists, connection will fail
 		//if multicast is not supported on the network, listFoundGroups
@@ -385,6 +386,7 @@ public class BusHandler extends Handler {
 	 */
 	private Status doJoinGroup(String groupName, String groupPassword, String saltShortDigest) {
 		amIAdmin = false;
+		connected = false;
 		messageEncrypter.reset();
 		messageEncrypter.setPassword(groupPassword);
 		messageEncrypter.setSaltShortDigest(saltShortDigest);
@@ -500,6 +502,14 @@ public class BusHandler extends Handler {
 	public String getSaltShortDigest(){
 		return this.messageEncrypter.getSaltShortDigest(messageEncrypter.getSalt());
 	}
+	
+	/**
+	 * Indicate if AllJoyn is connected in a group
+	 * @return true if connected, false otherwise
+	 */
+	public boolean getConnected(){
+		return connected;
+	}
 
 	/******************************************************************************
 	 * 
@@ -579,6 +589,7 @@ public class BusHandler extends Handler {
 	/**
 	 * Signal Handler for the Ping signal
 	 * This method receives the message from the other peers
+	 * @param str content of the message
 	 */
 	@BusSignalHandler(iface = "org.alljoyn.bus.samples.simple.SimpleInterface", signal = "Ping")
 	public void Ping(String str) {
