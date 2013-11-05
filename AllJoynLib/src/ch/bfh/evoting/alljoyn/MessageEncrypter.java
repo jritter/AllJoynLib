@@ -2,12 +2,14 @@ package ch.bfh.evoting.alljoyn;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.security.AlgorithmParameters;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.security.spec.InvalidKeySpecException;
+import java.security.spec.InvalidParameterSpecException;
 import java.security.spec.KeySpec;
 import java.util.Arrays;
 
@@ -30,18 +32,18 @@ import android.util.Log;
  *
  */
 public class MessageEncrypter {
-	
+
 	private static final String TAG = MessageEncrypter.class.getSimpleName();
-	
+
 	private SecretKey secretKey;
 	private byte[] salt;
 	private String password;
 	private SecureRandom random;
-	
+
 	private boolean isReady = false;
 
 	private Object saltShortDigest;
-	
+
 	/**
 	 * Method that encrypts data
 	 * @param data The data which should be encrypted
@@ -54,20 +56,20 @@ public class MessageEncrypter {
 		Cipher cipher;
 		try {
 			cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
-			
+
 			// cipher.getParameters() seems to return null on Android 4.3 (Bug?)
 			// Solution implemented from here: 
 			// https://code.google.com/p/android/issues/detail?id=58191
-			
-			/*
-			cipher.init(Cipher.ENCRYPT_MODE, secretKey);
-			AlgorithmParameters params = cipher.getParameters();
-			byte[] iv = params.getParameterSpec(IvParameterSpec.class).getIV();
-			*/
-			
-			byte [] iv = generateIv();
-			cipher.init(Cipher.ENCRYPT_MODE, secretKey, new IvParameterSpec(iv));
-			
+			byte [] iv;
+			if(android.os.Build.VERSION.SDK_INT > android.os.Build.VERSION_CODES.JELLY_BEAN_MR1){
+				iv = generateIv();
+				cipher.init(Cipher.ENCRYPT_MODE, secretKey, new IvParameterSpec(iv));
+			} else {
+				cipher.init(Cipher.ENCRYPT_MODE, secretKey);
+				AlgorithmParameters params = cipher.getParameters();
+				iv = params.getParameterSpec(IvParameterSpec.class).getIV();
+			}
+
 			byte[] cipherText = cipher.doFinal(data); 
 
 			ByteArrayOutputStream outputStream = new ByteArrayOutputStream( );
@@ -87,10 +89,10 @@ public class MessageEncrypter {
 			Log.d(TAG, e.getMessage()+" ");
 			e.printStackTrace();
 			return null;
-		/*} catch (InvalidParameterSpecException e) {
+		} catch (InvalidParameterSpecException e) {
 			Log.d(TAG, e.getMessage()+" ");
 			e.printStackTrace();
-			return null;*/
+			return null;
 		} catch (IllegalBlockSizeException e) {
 			Log.d(TAG, e.getMessage()+" ");
 			e.printStackTrace();
@@ -114,6 +116,7 @@ public class MessageEncrypter {
 	/**
 	 * 
 	 * Method that decrypts data
+	 * @param ciphertext byte array to decrypt
 	 * @return the decrypted string if decryption was successful,
 	 *         null otherwise
 	 *         
@@ -159,7 +162,7 @@ public class MessageEncrypter {
 			return null;
 		}
 	}
-	
+
 
 
 
@@ -188,7 +191,7 @@ public class MessageEncrypter {
 		}
 
 	}
-	
+
 	/**
 	 * Generate a salt that will be used in the symmetric key derivation
 	 */
@@ -197,7 +200,7 @@ public class MessageEncrypter {
 		this.derivateKey(password.toCharArray());
 		Log.d(TAG,"Salt is "+salt);
 	}
-	
+
 	/**
 	 * Set the salt
 	 * @param salt the Base64 encoded salt
@@ -213,7 +216,7 @@ public class MessageEncrypter {
 			Log.e(TAG,"Salt is false!");
 		}	
 	}
-	
+
 	/**
 	 * Get the earlier generated or set salt
 	 * @return the earlier generated or set salt
@@ -221,7 +224,7 @@ public class MessageEncrypter {
 	public byte[] getSalt(){
 		return salt;
 	}
-	
+
 	/**
 	 * Compute a truncated digest on the salt
 	 * We only take the three first letters (not chars!) of the Base64 encoded digest, because
@@ -231,7 +234,7 @@ public class MessageEncrypter {
 	 */
 	public String getSaltShortDigest(byte[] salt){
 		if(salt==null) return "";
-		
+
 		//Compute the digest
 		MessageDigest md;
 		String saltHash;
@@ -245,7 +248,7 @@ public class MessageEncrypter {
 			e.printStackTrace();
 			return null;
 		}
-		
+
 		//Truncate the digest
 		String shortDigest = "";
 		int i=0;
@@ -263,7 +266,7 @@ public class MessageEncrypter {
 
 		return shortDigest;
 	}
-	
+
 	/**
 	 * Set the password used to derivate the symmetric key
 	 * @param password the password used to derivate the symmetric key
@@ -271,7 +274,7 @@ public class MessageEncrypter {
 	public void setPassword(String password){
 		this.password = password;
 	}
-	
+
 	/**
 	 * Set the truncated digest of the salt that will be received later
 	 * @param saltShortDigest the truncated digest of the salt that will be received later
@@ -279,7 +282,7 @@ public class MessageEncrypter {
 	public void setSaltShortDigest(String saltShortDigest){
 		this.saltShortDigest = saltShortDigest;
 	}
-	
+
 	/**
 	 * Reset the state of the message encrypter
 	 */
@@ -290,7 +293,7 @@ public class MessageEncrypter {
 		this.password = null;
 		this.saltShortDigest = null;
 	}
-	
+
 	/**
 	 * Indicate if the symmetric key has been derivated and message encrypter is ready to encrypt/decrypt
 	 * @return true is message encrypter is ready to encrypt/decrypt, false otherwise
@@ -298,13 +301,13 @@ public class MessageEncrypter {
 	public boolean isReady(){
 		return isReady;
 	}
-	
+
 	private byte[] generateIv(){
-		
+
 		random = new SecureRandom();
-	    byte[] iv = new byte [16];
-	    random.nextBytes(iv);
-	    return iv;
+		byte[] iv = new byte [16];
+		random.nextBytes(iv);
+		return iv;
 	}
 
 }
