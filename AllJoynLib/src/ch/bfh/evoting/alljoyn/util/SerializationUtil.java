@@ -12,7 +12,7 @@ public class SerializationUtil {
 	
 	/**
 	 * Construct an object with the given serialization type
-	 * @param s
+	 * @param s concrete serialization
 	 */
 	public SerializationUtil(Serialization s){
 		this.s = s;

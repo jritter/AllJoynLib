@@ -134,19 +134,19 @@ public class MessageAuthenticater {
 			return instance.verify(signature);
 		} catch (NoSuchAlgorithmException e) {
 			e.printStackTrace();
-			Log.e(TAG, e.getStackTrace()+"");
+			Log.e(TAG, e.getMessage());
 			return false;
 		} catch (InvalidKeyException e) {
 			e.printStackTrace();
-			Log.e(TAG, e.getStackTrace()+"");
+			Log.e(TAG, e.getMessage());
 			return false;
 		} catch (SignatureException e) {
 			e.printStackTrace();
-			Log.e(TAG, e.getStackTrace()+"");
+			Log.e(TAG, e.getMessage());
 			return false;
 		} catch (NoSuchProviderException e) {
 			e.printStackTrace();
-			Log.e(TAG, e.getStackTrace()+"");
+			Log.e(TAG, e.getMessage());
 			return false;
 		}
 

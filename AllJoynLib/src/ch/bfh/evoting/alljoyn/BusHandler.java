@@ -89,7 +89,6 @@ public class BusHandler extends Handler {
 	private AllJoynMessage signatureVerificationTask;
 	private SerializationUtil su;
 
-
 	public static final int INIT = 1;
 	public static final int CREATE_GROUP = 2;
 	public static final int DESTROY_GROUP = 3;
@@ -117,7 +116,7 @@ public class BusHandler extends Handler {
 
 		su = new SerializationUtil(new JavaSerialization());
 		
-		messageEncrypter = new MessageEncrypter();
+		messageEncrypter = new MessageEncrypter(ctx);
 		messageAuthenticater = new MessageAuthenticater();
 		//We generate a new key pair each time the app is started, so we do not need to save it in order to reuse it later
 		//Creating a new key pair takes time, so we create only 512 bits keys. This is sufficient since the key pair is used during 
@@ -598,6 +597,11 @@ public class BusHandler extends Handler {
 		
 		//Deserialize the message
 		AllJoynMessage message = (AllJoynMessage)su.deserialize(str, AllJoynMessage.class);
+		if(message == null){
+			//deserialization failed, that means that this was not a message sent by our application
+			Log.d(TAG, "Deserialization of message failed.");
+			return;
+		}
 		message.setMessageAuthenticater(this.messageAuthenticater);
 		message.setMessageEncrypter(this.messageEncrypter);
 		
@@ -627,7 +631,7 @@ public class BusHandler extends Handler {
 		 * First we check if decrypter is ready. If not, only Salt message can go further
 		 */
 		//if messageEncrypter isn't ready to decrypt and message is encrypted
-		if(!messageEncrypter.isReady() && messageObject.isEncrypted() /*&& !message.startsWith(MESSAGE_PREFIX_SALT)*/){
+		if(!messageEncrypter.isReady() && messageObject.isEncrypted()){
 			//requeue the message in order to process it later
 			Message msg = this.obtainMessage(BusHandler.REPROCESS_MESSAGE);
 			Bundle data = new Bundle();
@@ -674,14 +678,17 @@ public class BusHandler extends Handler {
 				Log.d(TAG,"Signature correct");
 			}
 		} else {
-			//message not containing a salt nor an identity coming from an unknow person => ignore 
+			//message not containing a salt nor an identity coming from an unknown person => ignore 
+			Log.d(TAG,"Ignoring message since sender is not known");
+			//try to decrypt in order to detect if it could be a password error
+			messageObject.getMessage();
 			return;
 		}
 
 		/*
 		 * Fifth, we decrypt the message
 		 */
-		String decryptedString = messageObject.getMessage();//messageEncrypter.decrypt(Base64.decode(message.getBytes(), Base64.DEFAULT));
+		String decryptedString = messageObject.getMessage();
 		if(decryptedString==null || decryptedString.equals("")){
 			//decryption failed
 			Log.d(TAG, "Message decryption failed");

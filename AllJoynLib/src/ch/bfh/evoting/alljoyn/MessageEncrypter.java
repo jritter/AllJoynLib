@@ -23,6 +23,9 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.PBEKeySpec;
 import javax.crypto.spec.SecretKeySpec;
 
+import android.content.Context;
+import android.content.Intent;
+import android.support.v4.content.LocalBroadcastManager;
 import android.util.Base64;
 import android.util.Log;
 
@@ -43,6 +46,17 @@ public class MessageEncrypter {
 	private boolean isReady = false;
 
 	private Object saltShortDigest;
+
+	private boolean countDecryptionFailed = true;
+
+	private int numberOfDecryptionFailed = 0;
+
+	private Context context;
+
+	public MessageEncrypter(Context ctx) {
+		this.context = ctx;
+	}
+
 
 	/**
 	 * Method that encrypts data
@@ -134,7 +148,13 @@ public class MessageEncrypter {
 
 			cipher.init(Cipher.DECRYPT_MODE, secretKey, new IvParameterSpec(iv));
 
-			return new String(cipher.doFinal(cipherText));
+			String s = new String(cipher.doFinal(cipherText));
+			
+			//Since this decryption was successful, it means we have the correct key, 
+			//so we can disable the count of failed decryptions
+			countDecryptionFailed = false;
+			
+			return s;
 
 		} catch (NoSuchAlgorithmException e) {
 			Log.d(TAG, e.getMessage()+" ");
@@ -154,16 +174,29 @@ public class MessageEncrypter {
 			return null;
 		} catch (IllegalBlockSizeException e) {
 			Log.d(TAG, e.getMessage()+" ");
+			countFailedDecryption();
 			e.printStackTrace();
 			return null;
 		} catch (BadPaddingException e) {
 			Log.d(TAG, e.getMessage()+" ");
+			countFailedDecryption();
 			e.printStackTrace();
 			return null;
 		}
 	}
 
-
+	private void countFailedDecryption(){
+		if(countDecryptionFailed){
+			//Rememeber the number of decryption failed
+			numberOfDecryptionFailed++;
+			//if this number reaches 10 indicate it to the user
+			if(numberOfDecryptionFailed==5){
+				Intent intent = new Intent("probablyWrongDecryptionKeyUsed");
+				intent.putExtra("type", "password");
+				LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+			}
+		}
+	}
 
 
 	/**
@@ -213,6 +246,9 @@ public class MessageEncrypter {
 			Log.d(TAG,"Saving salt "+salt);
 			this.derivateKey(password.toCharArray());
 		} else {
+			Intent intent = new Intent("probablyWrongDecryptionKeyUsed");
+			intent.putExtra("type", "salt");
+			LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
 			Log.e(TAG,"Salt is false!");
 		}	
 	}
@@ -292,6 +328,8 @@ public class MessageEncrypter {
 		this.secretKey = null;
 		this.password = null;
 		this.saltShortDigest = null;
+		this.countDecryptionFailed = true;
+		this.numberOfDecryptionFailed = 0;
 	}
 
 	/**
