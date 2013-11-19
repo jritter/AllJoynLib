@@ -17,6 +17,7 @@
 package org.alljoyn.cops.peergroupmanager;
 
 import android.annotation.SuppressLint;
+import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
@@ -152,12 +153,14 @@ public class PeerGroupManager implements PeerGroupManagerInterface {
      *                     will be a pure client with no bus objects since bus 
      *                     objects cannot be registered beyond this point.
      */
-    public PeerGroupManager (String pgPrefix, PeerGroupListenerInterface pgListener, ArrayList<BusObjectData> busObjects) {
+    public PeerGroupManager (String pgPrefix, PeerGroupListenerInterface pgListener, ArrayList<BusObjectData> busObjects, Context context) {
         String methodName = "Constructor()";
         if(isInvalidStringParam(pgPrefix)) {
             logError(methodName, "Invalid name prefix");
             throw new IllegalArgumentException("Invalid name prefix");
         }
+
+        org.alljoyn.bus.alljoyn.DaemonInit.PrepareDaemon(context); 
         this.bus = new BusAttachment(pgPrefix, BusAttachment.RemoteMessage.Receive);
         this.groupPrefix = pgPrefix.trim() + ".sp";
         addPeerGroupListener(pgListener);

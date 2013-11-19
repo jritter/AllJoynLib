@@ -110,8 +110,9 @@ public class BusHandler extends Handler {
 	public BusHandler(Looper looper, Context ctx) {
 		super(looper);
 		// Connect to an AllJoyn object.
-		this.doInit();
 		this.context = ctx;
+		this.doInit();
+
 		userDetails = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
 
 		su = new SerializationUtil(new JavaSerialization());
@@ -318,7 +319,7 @@ public class BusHandler extends Handler {
 
 		ArrayList<BusObjectData> busObjects = new ArrayList<BusObjectData>();
 		busObjects.add(new BusObjectData(mSimpleService, "/SimpleService"));
-		mGroupManager = new PeerGroupManager(SERVICE_NAME, pgListener, busObjects);
+		mGroupManager = new PeerGroupManager(SERVICE_NAME, pgListener, busObjects, context);
 		mGroupManager.registerSignalHandlers(this);
 	}
 
