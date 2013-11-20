@@ -25,10 +25,10 @@ import android.util.Log;
 public class MessageAuthenticater {
 
 	private static final String TAG = MessageAuthenticater.class.getSimpleName();
-	
+
 	private PublicKey publicKey;
 	private PrivateKey privateKey;
-	
+
 	/**
 	 * Generate a key pair used to sign messages' content and verify signatures
 	 * We limit the size of these RSA keys to 512 bits. The reason is that we want to generate
@@ -49,9 +49,9 @@ public class MessageAuthenticater {
 			e.printStackTrace();
 		} catch (NoSuchProviderException e) {
 			e.printStackTrace();
-		}           
+		} 
 	}
-	
+
 	/**
 	 * Decode a Base64 encoded public key in a PublicKey object
 	 * @param encodedKey the Base64 encoded key
@@ -78,7 +78,7 @@ public class MessageAuthenticater {
 		}
 		return pubKey;
 	}
-	
+
 	/**
 	 * Sign the given content
 	 * @param valueToSign content to sign
@@ -151,7 +151,7 @@ public class MessageAuthenticater {
 		}
 
 	}
-	
+
 	/**
 	 * Get the generated public key
 	 * @return the generated public key

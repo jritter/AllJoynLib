@@ -319,7 +319,7 @@ public class BusHandler extends Handler {
 
 		ArrayList<BusObjectData> busObjects = new ArrayList<BusObjectData>();
 		busObjects.add(new BusObjectData(mSimpleService, "/SimpleService"));
-		mGroupManager = new PeerGroupManager(SERVICE_NAME, pgListener, busObjects, context);
+		mGroupManager = new PeerGroupManager(SERVICE_NAME, pgListener, busObjects);
 		mGroupManager.registerSignalHandlers(this);
 	}
 
