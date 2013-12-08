@@ -19,6 +19,13 @@ package ch.bfh.evoting.alljoyn;
 
 
 import java.io.UnsupportedEncodingException;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
+import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.StringTokenizer;
@@ -27,7 +34,6 @@ import org.alljoyn.bus.BusException;
 import org.alljoyn.bus.BusObject;
 import org.alljoyn.bus.Status;
 import org.alljoyn.bus.annotation.BusSignalHandler;
-
 import org.alljoyn.cops.peergroupmanager.PeerGroupManager;
 import org.alljoyn.cops.peergroupmanager.BusObjectData;
 import org.alljoyn.cops.peergroupmanager.PeerGroupListener;
@@ -35,7 +41,6 @@ import org.alljoyn.cops.peergroupmanager.PeerGroupListener;
 import ch.bfh.evoting.alljoyn.AllJoynMessage.Type;
 import ch.bfh.evoting.alljoyn.util.JavaSerialization;
 import ch.bfh.evoting.alljoyn.util.SerializationUtil;
-
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -88,6 +93,8 @@ public class BusHandler extends Handler {
 	private MessageAuthenticater messageAuthenticater;
 	private AllJoynMessage signatureVerificationTask;
 	private SerializationUtil su;
+	private PublicKey publicKey;
+	private PrivateKey privateKey;
 
 	public static final int INIT = 1;
 	public static final int CREATE_GROUP = 2;
@@ -101,6 +108,7 @@ public class BusHandler extends Handler {
 	public static final int DISCONNECT = 10;
 	public static final int PING = 13;
 	public static final int REPROCESS_MESSAGE = 14;
+	public static final int UNICAST = 15;
 
 	/**
 	 * Initialization of the bus handler
@@ -118,11 +126,13 @@ public class BusHandler extends Handler {
 		su = new SerializationUtil(new JavaSerialization());
 		
 		messageEncrypter = new MessageEncrypter(ctx);
-		messageAuthenticater = new MessageAuthenticater();
+		
 		//We generate a new key pair each time the app is started, so we do not need to save it in order to reuse it later
 		//Creating a new key pair takes time, so we create only 512 bits keys. This is sufficient since the key pair is used during 
 		//maximum one hour and a brute force attack should be done online
-		messageAuthenticater.generateKeys();
+		generateKeys();
+		messageAuthenticater = new MessageAuthenticater(privateKey, publicKey);
+		
 	}
 
 
@@ -236,6 +246,16 @@ public class BusHandler extends Handler {
 			boolean encrypted = data.getBoolean("encrypted", true);
 			Type type = (Type)data.getSerializable("type");
 			doPing(groupName, pingString, encrypted, type);
+			break;
+		}
+		case UNICAST: {
+			Bundle data = msg.getData();
+			String groupName = data.getString("groupName");
+			String pingString = data.getString("pingString");
+			boolean encrypted = data.getBoolean("encrypted", true);
+			String destinationUniqueId = data.getString("destinationUniqueId");
+			Type type = (Type)data.getSerializable("type");
+			doUnicast(groupName, pingString, encrypted, destinationUniqueId, type);
 			break;
 		}
 		case REPROCESS_MESSAGE: {
@@ -577,13 +597,80 @@ public class BusHandler extends Handler {
 			e.printStackTrace();
 		}
 	}
+	
+	
+	/**
+	 * Send a message to the given group
+	 * @param groupName group to send the message to
+	 * @param message message to send
+	 * @param encrypted indicate if message must be encrypted or not 
+	 * @param type type of the content in the message
+	 */
+	private void doUnicast(String groupName, String message, boolean encrypted, String destinationUniqueId, Type type) {
+
+		//if messageEncrypter is not ready or group joining is not terminated, we enqueue the message
+		if((!messageEncrypter.isReady() && encrypted) || !connected){
+			Message msg = this.obtainMessage(BusHandler.UNICAST);
+			Bundle data = new Bundle();
+			data.putString("groupName", groupName);
+			data.putString("pingString", message);
+			data.putBoolean("encrypted", encrypted);
+			data.putString("destinationUniqueId", destinationUniqueId);
+			data.putSerializable("type", type);
+			msg.setData(data);
+			this.sendMessage(msg);
+			Log.d(TAG, "Queueing message to send "+message);
+			return;
+		}
+
+		//Create the message object with the received parameter
+		AllJoynMessage messageObject = new AllJoynMessage(this.messageEncrypter, this.messageAuthenticater);
+		if(type==null) type = Type.NORMAL;
+		messageObject.setType(type);
+		messageObject.setSender(this.getIdentification());
+		boolean messageEncrypted = messageObject.setMessage(message, encrypted, identityMap.get(destinationUniqueId).getPublicKey());
+		if(!messageEncrypted){
+			Log.e(TAG, "Message encryption failed");
+			return;
+		}
+		boolean messageSigned = messageObject.signMessage();
+		if(!messageSigned){
+			Log.e(TAG, "Signature failed");
+			return;
+		}
+		
+		//Serialize the message
+		messageObject.setMessageAuthenticater(null);
+		messageObject.setMessageEncrypter(null);
+		String toSend = su.serialize(messageObject);
+				
+		try {
+			Log.d(TAG, "sending message of size "+toSend.getBytes("UTF-8").length+" bytes. Maximum allowed by AllJoyn is 128Kb.");
+		} catch (UnsupportedEncodingException e1) {
+			e1.printStackTrace();
+		}
+		
+		//Send the message
+		SimpleInterface simpleInterface = mGroupManager.getSignalInterface(destinationUniqueId, groupName, mSimpleService, SimpleInterface.class);
+		try {
+			if(simpleInterface != null) {
+				simpleInterface.Unicast(toSend);
+			}
+		} catch (BusException e) {
+			e.printStackTrace();
+		}
+	}
 
 
 	/**
 	 * Simple class implementing the AllJoyn interface
 	 */
 	class SimpleService implements SimpleInterface, BusObject {
-		public void Ping(String Str) {}        
+		@Override
+		public void Ping(String Str) {}
+
+		@Override
+		public void Unicast(String Str) throws BusException {}
 	}
 
 	/**
@@ -620,6 +707,42 @@ public class BusHandler extends Handler {
 		}
 		
 		processMessage(message);
+	}
+	
+	/**
+	 * Signal Handler for the Unicast signal
+	 * This method receives the message from the other peers
+	 * @param str content of the message
+	 */
+	@BusSignalHandler(iface = "org.alljoyn.bus.samples.simple.SimpleInterface", signal = "Unicast")
+	public void Unicast(String str) {
+		
+		if(str==null) return;
+		
+		//Deserialize the message
+		AllJoynMessage message = (AllJoynMessage)su.deserialize(str, AllJoynMessage.class);
+		if(message == null){
+			//deserialization failed, that means that this was not a message sent by our application
+			Log.d(TAG, "Deserialization of message failed.");
+			return;
+		}
+		message.setMessageAuthenticater(this.messageAuthenticater);
+		message.setMessageEncrypter(this.messageEncrypter);
+		
+		if(connected){
+			String sender = mGroupManager.getSenderPeerId();
+			//we ask alljoin for the sender id and compare it with the sender found in the message
+			//if it is different, someone is trying to send a message on behalf of another peer
+			if(!message.getSender().equals(sender)){
+				Intent intent = new Intent("attackDetected");
+				intent.putExtra("type", 2);
+				LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+				Log.e(TAG,"The name of the sender of the message indicated by AllJoyn is "+ sender + " but the sender indicated in the message is "+message.getSender()+"!!");	
+				return;
+			}
+		}
+		
+		processUnicastMessage(message);
 	}
 
 	/**
@@ -690,6 +813,56 @@ public class BusHandler extends Handler {
 		 * Fifth, we decrypt the message
 		 */
 		String decryptedString = messageObject.getMessage();
+		if(decryptedString==null || decryptedString.equals("")){
+			//decryption failed
+			Log.d(TAG, "Message decryption failed");
+			return;
+		}
+
+		/*
+		 * Sixth, we transmit message to the application
+		 */
+		//Send the message to the app
+		Intent i = new Intent("messageArrived");
+		i.putExtra("senderId", messageObject.getSender());
+		i.putExtra("senderName", identityMap.get(messageObject.getSender()).getName());
+		i.putExtra("message", decryptedString);
+		LocalBroadcastManager.getInstance(context).sendBroadcast(i);
+	}
+	
+	
+	
+	/**
+	 * Method processing the message received
+	 * @param messageObject object containing the message transmitted over the newtork
+	 */
+	private void processUnicastMessage(AllJoynMessage messageObject){
+
+		/*
+		 * Fourth, we verify the signature, if we know the sender, otherwise we set a flag
+		 */
+		if(identityMap.containsKey(messageObject.getSender())){
+			boolean result = messageObject.verifyMessage(identityMap.get(messageObject.getSender()).getPublicKey());//messageAuthenticater.verifySignature(identityMap.get(sender).getPublicKey(), Base64.decode(signature,Base64.DEFAULT), Base64.decode(message,Base64.DEFAULT));
+			if(!result){
+				//signature verification failed
+				//ignoring message
+				Log.e(TAG,"Wrong signature");
+				return;
+			} else {
+				Log.d(TAG,"Signature correct");
+			}
+		} else {
+			//message not containing a salt nor an identity coming from an unknown person => ignore 
+			Log.d(TAG,"Ignoring message since sender is not known");
+			//try to decrypt in order to detect if it could be a password error
+			messageObject.getMessage();
+			return;
+		}
+
+		/*
+		 * Fifth, we decrypt the message
+		 */
+		String decryptedString = messageObject.getMessage(privateKey);
 		if(decryptedString==null || decryptedString.equals("")){
 			//decryption failed
 			Log.d(TAG, "Message decryption failed");
@@ -844,6 +1017,29 @@ public class BusHandler extends Handler {
 			messageEncrypter.reset();
 			Log.e(TAG, "Signature of salt message was incorrect");
 		}
+	}
+	
+	/**
+	 * Generate a key pair used to sign messages' content and verify signatures
+	 * We limit the size of these RSA keys to 512 bits. The reason is that we want to generate
+	 * a new key pair each time the application is launched, in order not to have to save it.
+	 * In our case, 512 bits is enough since the keys are not used longer than one our, what is to less 
+	 * to make a bruteforce attack.
+	 */
+	public void generateKeys(){
+		try {
+			KeyPairGenerator generator;
+			generator = KeyPairGenerator.getInstance("RSA", "BC");
+			generator.initialize(512, new SecureRandom());
+			KeyPair pair = generator.generateKeyPair();
+			publicKey = pair.getPublic();
+			privateKey = pair.getPrivate();  
+
+		} catch (NoSuchAlgorithmException e) {
+			e.printStackTrace();
+		} catch (NoSuchProviderException e) {
+			e.printStackTrace();
+		} 
 	}
 
 

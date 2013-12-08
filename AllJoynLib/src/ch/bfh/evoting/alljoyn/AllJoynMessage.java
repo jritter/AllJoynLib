@@ -3,6 +3,7 @@ package ch.bfh.evoting.alljoyn;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.Serializable;
+import java.security.PrivateKey;
 import java.security.PublicKey;
 
 /**
@@ -89,6 +90,23 @@ public class AllJoynMessage implements Serializable {
 			return new String(message);
 		}
 	}
+	
+	/**
+	 * Get the content of the message
+	 * If the content is encrypted, it decrypts it
+	 * @return the decrypted message content
+	 */
+	public String getMessage(PrivateKey privateKey) {
+
+		if(this.isEncrypted){
+			if(this.decryptedString==null){
+				this.decryptedString = this.messageEncrypter.decrypt(this.message, privateKey);
+			}
+			return this.decryptedString;
+		} else {
+			return new String(message);
+		}
+	}
 
 	/**
 	 * Set the content of the message
@@ -109,6 +127,20 @@ public class AllJoynMessage implements Serializable {
 			}
 		} else {
 			this.message = message.getBytes();
+			return true;
+		}
+	}
+	
+	public boolean setMessage(String message, boolean encrypt,
+			PublicKey publicKey) {
+		if (!encrypt){
+			return setMessage(message, encrypt);
+		}
+		
+		this.message = this.messageEncrypter.encrypt(message.getBytes(), publicKey);
+		if(this.message==null){
+			return false;
+		} else {
 			return true;
 		}
 	}

@@ -29,27 +29,11 @@ public class MessageAuthenticater {
 	private PublicKey publicKey;
 	private PrivateKey privateKey;
 
-	/**
-	 * Generate a key pair used to sign messages' content and verify signatures
-	 * We limit the size of these RSA keys to 512 bits. The reason is that we want to generate
-	 * a new key pair each time the application is launched, in order not to have to save it.
-	 * In our case, 512 bits is enough since the keys are not used longer than one our, what is to less 
-	 * to make a bruteforce attack.
-	 */
-	public void generateKeys(){
-		try {
-			KeyPairGenerator generator;
-			generator = KeyPairGenerator.getInstance("RSA", "BC");
-			generator.initialize(512, new SecureRandom());
-			KeyPair pair = generator.generateKeyPair();
-			publicKey = pair.getPublic();
-			privateKey = pair.getPrivate();  
+	
 
-		} catch (NoSuchAlgorithmException e) {
-			e.printStackTrace();
-		} catch (NoSuchProviderException e) {
-			e.printStackTrace();
-		} 
+	public MessageAuthenticater(PrivateKey privateKey, PublicKey publicKey) {
+		this.privateKey = privateKey;
+		this.publicKey = publicKey;
 	}
 
 	/**

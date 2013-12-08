@@ -18,6 +18,7 @@ package ch.bfh.evoting.alljoyn;
 
 import org.alljoyn.bus.BusException;
 import org.alljoyn.bus.annotation.BusInterface;
+import org.alljoyn.bus.annotation.BusMethod;
 import org.alljoyn.bus.annotation.BusSignal;
 
 /**
@@ -29,4 +30,8 @@ public interface SimpleInterface {
 
     @BusSignal
     public void Ping(String Str) throws BusException;
+    
+    
+    @BusMethod
+    public void Unicast(String Str) throws BusException;
 }
