@@ -716,7 +716,7 @@ public class BusHandler extends Handler {
 	 */
 	@BusSignalHandler(iface = "org.alljoyn.bus.samples.simple.SimpleInterface", signal = "Unicast")
 	public void Unicast(String str) {
-		
+
 		if(str==null) return;
 		
 		//Deserialize the message
@@ -855,7 +855,7 @@ public class BusHandler extends Handler {
 			//message not containing a salt nor an identity coming from an unknown person => ignore 
 			Log.d(TAG,"Ignoring message since sender is not known");
 			//try to decrypt in order to detect if it could be a password error
-			messageObject.getMessage();
+			messageObject.getMessage(privateKey);
 			return;
 		}
 
@@ -868,6 +868,7 @@ public class BusHandler extends Handler {
 			Log.d(TAG, "Message decryption failed");
 			return;
 		}
+		
 
 		/*
 		 * Sixth, we transmit message to the application

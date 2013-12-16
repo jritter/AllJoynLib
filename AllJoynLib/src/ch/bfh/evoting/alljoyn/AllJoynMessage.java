@@ -6,6 +6,8 @@ import java.io.Serializable;
 import java.security.PrivateKey;
 import java.security.PublicKey;
 
+import android.util.Log;
+
 /**
  * Class representing a message that is sent over the network
  * @author Philémon von Bergen
@@ -97,7 +99,8 @@ public class AllJoynMessage implements Serializable {
 	 * @return the decrypted message content
 	 */
 	public String getMessage(PrivateKey privateKey) {
-
+		Log.d(this.getClass().getSimpleName(), "Calling async decryption...");
+		Log.d(this.getClass().getSimpleName(), "Is encrypted " + this.isEncrypted);
 		if(this.isEncrypted){
 			if(this.decryptedString==null){
 				this.decryptedString = this.messageEncrypter.decrypt(this.message, privateKey);
@@ -133,6 +136,8 @@ public class AllJoynMessage implements Serializable {
 	
 	public boolean setMessage(String message, boolean encrypt,
 			PublicKey publicKey) {
+		
+		this.isEncrypted = encrypt;
 		if (!encrypt){
 			return setMessage(message, encrypt);
 		}

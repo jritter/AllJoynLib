@@ -18,6 +18,7 @@ import java.util.Arrays;
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.KeyGenerator;
 import javax.crypto.NoSuchPaddingException;
 import javax.crypto.SecretKey;
 import javax.crypto.SecretKeyFactory;
@@ -143,12 +144,45 @@ public class MessageEncrypter {
 	public byte[] encrypt(byte[] data, PublicKey publicKey) {
 
 		Cipher cipher;
+		Cipher asymCipher;
 		try {
-			cipher = Cipher.getInstance("RSA");
-			cipher.init(Cipher.ENCRYPT_MODE, publicKey);
-			byte[] cipherText = cipher.doFinal(data);
+
+			cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
+			// cipher.getParameters() seems to return null on Android 4.3 (Bug?)
+			// Solution implemented from here:
+			// https://code.google.com/p/android/issues/detail?id=58191
+			byte[] iv;
+			if (android.os.Build.VERSION.SDK_INT > android.os.Build.VERSION_CODES.JELLY_BEAN_MR1) {
+				iv = generateIv();
+				cipher.init(Cipher.ENCRYPT_MODE, secretKey,
+						new IvParameterSpec(iv));
+			} else {
+				cipher.init(Cipher.ENCRYPT_MODE, secretKey);
+				AlgorithmParameters params = cipher.getParameters();
+				iv = params.getParameterSpec(IvParameterSpec.class).getIV();
+			}
+			KeyGenerator keygen = KeyGenerator.getInstance("AES");
+			SecureRandom random = new SecureRandom();
+			keygen.init(random);
+			SecretKey key = keygen.generateKey();
+
+			asymCipher = Cipher.getInstance("RSA");
+			asymCipher.init(Cipher.WRAP_MODE, publicKey);
+			byte[] wrappedKey = asymCipher.wrap(key);
+			
+
 			ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+			outputStream.write(wrappedKey);
+
+
+			outputStream.write(iv);
+
+			cipher.init(Cipher.ENCRYPT_MODE, key, new IvParameterSpec(iv));
+			byte[] cipherText = cipher.doFinal(data);
+			
 			outputStream.write(cipherText);
+
+
 			return outputStream.toByteArray();
 
 		} catch (NoSuchAlgorithmException e) {
@@ -172,6 +206,14 @@ public class MessageEncrypter {
 			e.printStackTrace();
 			return null;
 		} catch (IOException e) {
+			Log.d(TAG, e.getMessage() + " ");
+			e.printStackTrace();
+			return null;
+		} catch (InvalidAlgorithmParameterException e) {
+			Log.d(TAG, e.getMessage() + " ");
+			e.printStackTrace();
+			return null;
+		} catch (InvalidParameterSpecException e) {
 			Log.d(TAG, e.getMessage() + " ");
 			e.printStackTrace();
 			return null;
@@ -251,13 +293,32 @@ public class MessageEncrypter {
 	public String decrypt(byte[] ciphertext, PrivateKey privateKey) {
 
 		Cipher cipher;
+		Cipher asymCipher;
+
+		byte[] wrappedKey = Arrays.copyOfRange(ciphertext, 0, 64);
+		
+		// iv is same as block size: for AES => 128 bits = 16 bytes
+		byte[] iv = Arrays.copyOfRange(ciphertext, 64, 64 + 16);
+		
+		byte[] cipherText = Arrays.copyOfRange(ciphertext, 64 + 16,
+				ciphertext.length);
+		
+
 		try {
+
+			asymCipher = Cipher.getInstance("RSA");
+			asymCipher.init(Cipher.UNWRAP_MODE, privateKey);
+			SecretKey key = (SecretKey) asymCipher.unwrap(wrappedKey, "AES",
+					Cipher.SECRET_KEY);
+
 			cipher = Cipher.getInstance("AES/CBC/PKCS5Padding");
 
-			cipher.init(Cipher.DECRYPT_MODE, privateKey);
+			cipher.init(Cipher.DECRYPT_MODE, key, new IvParameterSpec(iv));
 
-			String s = new String(cipher.doFinal(ciphertext));
+			byte[] data = cipher.doFinal(cipherText);
 
+			String s = new String(data);
+			
 			return s;
 
 		} catch (NoSuchAlgorithmException e) {
@@ -278,6 +339,11 @@ public class MessageEncrypter {
 			e.printStackTrace();
 			return null;
 		} catch (BadPaddingException e) {
+			Log.d(TAG, e.getMessage() + " ");
+			countFailedDecryption();
+			e.printStackTrace();
+			return null;
+		} catch (InvalidAlgorithmParameterException e) {
 			Log.d(TAG, e.getMessage() + " ");
 			countFailedDecryption();
 			e.printStackTrace();
