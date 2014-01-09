@@ -164,7 +164,7 @@ public class PeerGroupManager implements PeerGroupManagerInterface {
         addPeerGroupListener(pgListener);
         this.pgBusListener = new PGBusListener();
         this.pgSessionListener = new PGSessionListener();
-        this.defaultSessionOpts = new SessionOpts(SessionOpts.TRAFFIC_MESSAGES, true, SessionOpts.PROXIMITY_ANY, SessionOpts.TRANSPORT_ANY/*TRANSPORT_WLAN*/);
+        this.defaultSessionOpts = new SessionOpts(SessionOpts.TRAFFIC_MESSAGES, true, SessionOpts.PROXIMITY_ANY, (byte)(SessionOpts.TRANSPORT_WLAN+SessionOpts.TRANSPORT_ICE));
         this.defaultSessionPort = INVALID_SESSION_PORT;
         registerBusObjects(busObjects);
         Status status = connectBus();

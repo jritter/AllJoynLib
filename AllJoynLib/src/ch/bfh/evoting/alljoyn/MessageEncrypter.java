@@ -37,6 +37,7 @@ import android.util.Log;
 public class MessageEncrypter {
 
 	private static final String TAG = MessageEncrypter.class.getSimpleName();
+	private boolean debug = false;
 
 	private SecretKey secretKey;
 	private byte[] salt;
@@ -53,8 +54,9 @@ public class MessageEncrypter {
 
 	private Context context;
 
-	public MessageEncrypter(Context ctx) {
+	public MessageEncrypter(Context ctx, boolean debug) {
 		this.context = ctx;
+		this.debug = debug;
 	}
 
 
@@ -149,11 +151,11 @@ public class MessageEncrypter {
 			cipher.init(Cipher.DECRYPT_MODE, secretKey, new IvParameterSpec(iv));
 
 			String s = new String(cipher.doFinal(cipherText));
-			
+
 			//Since this decryption was successful, it means we have the correct key, 
 			//so we can disable the count of failed decryptions
 			countDecryptionFailed = false;
-			
+
 			return s;
 
 		} catch (NoSuchAlgorithmException e) {
@@ -229,8 +231,14 @@ public class MessageEncrypter {
 	 * Generate a salt that will be used in the symmetric key derivation
 	 */
 	public void generateSalt(){
-		this.salt = SecureRandom.getSeed(8);
-		this.derivateKey(password.toCharArray());
+		if(debug){
+			this.salt = new byte[]{-104, -58, 58, 91, 5, 103, -95, 82};
+			this.password = "debugpassword";
+			this.derivateKey(password.toCharArray());
+		} else {
+			this.salt = SecureRandom.getSeed(8);
+			this.derivateKey(password.toCharArray());
+		}
 		Log.d(TAG,"Salt is "+salt);
 	}
 
@@ -239,18 +247,27 @@ public class MessageEncrypter {
 	 * @param salt the Base64 encoded salt
 	 */
 	public void setSalt(String salt){
-		byte[] tempSalt = Base64.decode(salt, Base64.DEFAULT);
-		if(this.saltShortDigest.equals(getSaltShortDigest(tempSalt))){
-			Log.d(TAG, "received salt digest is "+saltShortDigest+" and computed digest from received salt is "+getSaltShortDigest(tempSalt));
-			this.salt = tempSalt;
-			Log.d(TAG,"Saving salt "+salt);
+		if(debug){
+			this.salt = new byte[]{-104, -58, 58, 91, 5, 103, -95, 82};
+			this.password = "debugpassword";
 			this.derivateKey(password.toCharArray());
 		} else {
-			Intent intent = new Intent("probablyWrongDecryptionKeyUsed");
-			intent.putExtra("type", "salt");
-			LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
-			Log.e(TAG,"Salt is false!");
-		}	
+			byte[] tempSalt = Base64.decode(salt, Base64.DEFAULT);
+
+			if(this.saltShortDigest.equals(getSaltShortDigest(tempSalt))){
+				Log.d(TAG, "received salt digest is "+saltShortDigest+" and computed digest from received salt is "+getSaltShortDigest(tempSalt));
+				this.salt = tempSalt;
+				Log.d(TAG,"Saving salt "+salt);
+				this.derivateKey(password.toCharArray());
+			} else {
+				Intent intent = new Intent("probablyWrongDecryptionKeyUsed");
+				intent.putExtra("type", "salt");
+				LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+				Log.e(TAG,"Salt is false!");
+			}
+
+
+		}
 	}
 
 	/**
@@ -308,7 +325,11 @@ public class MessageEncrypter {
 	 * @param password the password used to derivate the symmetric key
 	 */
 	public void setPassword(String password){
-		this.password = password;
+		if(debug){
+			this.password = "debugpassword";
+		}else{
+			this.password = password;
+		}
 	}
 
 	/**
@@ -316,7 +337,11 @@ public class MessageEncrypter {
 	 * @param saltShortDigest the truncated digest of the salt that will be received later
 	 */
 	public void setSaltShortDigest(String saltShortDigest){
-		this.saltShortDigest = saltShortDigest;
+		if(debug){
+			this.saltShortDigest = "bwe";
+		} else {
+			this.saltShortDigest = saltShortDigest;
+		}
 	}
 
 	/**

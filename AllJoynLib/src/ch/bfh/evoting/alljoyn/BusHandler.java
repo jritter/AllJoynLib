@@ -58,6 +58,7 @@ public class BusHandler extends Handler {
 	/*
 	 * Constants
 	 */
+
 	private static final String TAG = BusHandler.class.getSimpleName();
 	private static final String SERVICE_NAME = "ch.bfh.evoting";
 	private static final String PREFS_NAME = "network_preferences";
@@ -88,6 +89,7 @@ public class BusHandler extends Handler {
 	private MessageAuthenticater messageAuthenticater;
 	private AllJoynMessage signatureVerificationTask;
 	private SerializationUtil su;
+	protected boolean feedbackReceived;
 
 	public static final int INIT = 1;
 	public static final int CREATE_GROUP = 2;
@@ -106,8 +108,9 @@ public class BusHandler extends Handler {
 	 * Initialization of the bus handler
 	 * @param looper looper
 	 * @param ctx Android context of the application
+	 * @param debug if set use a default group password and a default salt
 	 */
-	public BusHandler(Looper looper, Context ctx) {
+	public BusHandler(Looper looper, Context ctx, boolean debug) {
 		super(looper);
 		// Connect to an AllJoyn object.
 		this.context = ctx;
@@ -117,7 +120,7 @@ public class BusHandler extends Handler {
 
 		su = new SerializationUtil(new JavaSerialization());
 		
-		messageEncrypter = new MessageEncrypter(ctx);
+		messageEncrypter = new MessageEncrypter(ctx, debug);
 		messageAuthenticater = new MessageAuthenticater();
 		//We generate a new key pair each time the app is started, so we do not need to save it in order to reuse it later
 		//Creating a new key pair takes time, so we create only 512 bits keys. This is sufficient since the key pair is used during 
@@ -196,6 +199,7 @@ public class BusHandler extends Handler {
 				intent = new Intent("networkConnectionFailed");
 				intent.putExtra("error", 3);
 				LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+
 				break;
 			case ALLJOYN_JOINSESSION_REPLY_FAILED:
 				//group not joined
@@ -311,13 +315,29 @@ public class BusHandler extends Handler {
 					int numPeers) {
 				//update UI
 				Log.d(TAG, "peer left");
-				LocalBroadcastManager.getInstance(context).sendBroadcast(new Intent("participantStateUpdate"));
+				Intent intent = new Intent("participantStateUpdate");
+				intent.putExtra("action", "left");
+				intent.putExtra("id", peerId);
+				LocalBroadcastManager.getInstance(context).sendBroadcast(intent);
+				
 				super.peerRemoved(peerId, groupName, numPeers);
 			}
 			
 		};
 
 		ArrayList<BusObjectData> busObjects = new ArrayList<BusObjectData>();
+		Handler mainHandler = new Handler(context.getMainLooper());
+
+		Runnable myRunnable = new Runnable(){
+
+			@Override
+			public void run() {
+				org.alljoyn.bus.alljoyn.DaemonInit.PrepareDaemon(context); 
+			}
+			
+		};
+		mainHandler.post(myRunnable);
+		
 		busObjects.add(new BusObjectData(mSimpleService, "/SimpleService"));
 		mGroupManager = new PeerGroupManager(SERVICE_NAME, pgListener, busObjects);
 		mGroupManager.registerSignalHandlers(this);
@@ -385,6 +405,10 @@ public class BusHandler extends Handler {
 	 * @return status of join
 	 */
 	private Status doJoinGroup(String groupName, String groupPassword, String saltShortDigest) {
+		for(String s : mGroupManager.listFoundGroups()){
+			Log.e("BusHandler", "Available group: "+s);
+		}
+		
 		amIAdmin = false;
 		connected = false;
 		messageEncrypter.reset();
@@ -845,6 +869,8 @@ public class BusHandler extends Handler {
 			Log.e(TAG, "Signature of salt message was incorrect");
 		}
 	}
+	
+	
 
 
 }
